@@ -311,6 +311,8 @@ static int builtin_help(char **argv, int argc)
     shell_puts("  hostname [name]   Print or set hostname\n");
     shell_puts("  whoami            Print current user\n");
     shell_puts("  version           Print version information\n");
+    shell_puts("  taskmgr           Show RedLion task manager\n");
+    shell_puts("  ps                List system tasks\n");
     shell_puts("  history           Print command history\n");
     shell_puts("  env               Print environment variables\n");
     shell_puts("  export NAME=val   Set an environment variable\n");
@@ -615,6 +617,109 @@ static int builtin_play(char **argv, int argc)
 }
 
 typedef struct {
+    int pid;
+    const char *name;
+    const char *state;
+    const char *type;
+    const char *memory;
+    int protected_task;
+} task_info;
+
+static task_info task_table[] = {
+    {1, "kernel",   "running", "core",   "16K", 1},
+    {2, "keyboard", "waiting", "driver", "4K",  1},
+    {3, "vfs",      "ready",   "service","24K", 1},
+    {4, "shell",    "running", "user",   "32K", 1},
+    {5, "snake",    "idle",    "app",    "8K",  0},
+    {0, 0, 0, 0, 0, 0}
+};
+
+static void taskmgr_print_header(void)
+{
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("RedLion Task Manager\n");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    shell_puts("PID  STATE    TYPE     MEM   NAME\n");
+    shell_puts("---  -------  -------  ----  --------\n");
+}
+
+static void taskmgr_print_padded(const char *text, int width)
+{
+    int len = (int)strlen(text);
+
+    shell_puts(text);
+    while (len < width) {
+        shell_putc(' ');
+        len++;
+    }
+}
+
+static void taskmgr_print_list(void)
+{
+    int i;
+
+    taskmgr_print_header();
+    for (i = 0; task_table[i].pid != 0; i++) {
+        shell_print_int(task_table[i].pid);
+        if (task_table[i].pid < 10) {
+            shell_puts("    ");
+        } else {
+            shell_puts("   ");
+        }
+        taskmgr_print_padded(task_table[i].state, 7);
+        shell_puts("  ");
+        taskmgr_print_padded(task_table[i].type, 7);
+        shell_puts("  ");
+        taskmgr_print_padded(task_table[i].memory, 4);
+        shell_puts("  ");
+        shell_puts(task_table[i].name);
+        shell_putc('\n');
+    }
+}
+
+static int builtin_taskmgr(char **argv, int argc)
+{
+    int pid;
+    int i;
+
+    if (argc == 1 || strcmp(argv[1], "list") == 0) {
+        taskmgr_print_list();
+        shell_puts("\nCommands: taskmgr list, taskmgr kill <pid>\n");
+        return 0;
+    }
+
+    if (strcmp(argv[1], "kill") == 0) {
+        if (argc < 3) {
+            shell_puts("taskmgr: missing pid\n");
+            return 1;
+        }
+
+        pid = atoi(argv[2]);
+        for (i = 0; task_table[i].pid != 0; i++) {
+            if (task_table[i].pid == pid) {
+                if (task_table[i].protected_task) {
+                    shell_puts("taskmgr: pid ");
+                    shell_print_int(pid);
+                    shell_puts(" is protected\n");
+                    return 1;
+                }
+
+                shell_puts("taskmgr: pid ");
+                shell_print_int(pid);
+                shell_puts(" is not running\n");
+                return 0;
+            }
+        }
+
+        shell_puts("taskmgr: pid not found\n");
+        return 1;
+    }
+
+    shell_puts("Usage: taskmgr [list] | taskmgr kill <pid>\n");
+    return 1;
+}
+
+typedef struct {
     const char *name;
     int (*func)(char **argv, int argc);
 } builtin_cmd;
@@ -640,6 +745,9 @@ static builtin_cmd builtins[] = {
     {"set",      builtin_env},
     {"unset",    builtin_unset},
     {"play",     builtin_play},
+    {"taskmgr",  builtin_taskmgr},
+    {"tasks",    builtin_taskmgr},
+    {"ps",       builtin_taskmgr},
     {0, 0}
 };
 
