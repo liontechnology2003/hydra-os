@@ -105,3 +105,11 @@ no_error_code_interrupt_handler 44
 no_error_code_interrupt_handler 45
 no_error_code_interrupt_handler 46
 no_error_code_interrupt_handler 47
+
+; System call interrupt (0x80) - uses push dword to handle values > 127
+global interrupt_handler_128
+interrupt_handler_128:
+    cli
+    push dword 0                     ; push dummy error code
+    push dword 128                   ; push interrupt number
+    jmp common_interrupt_handler

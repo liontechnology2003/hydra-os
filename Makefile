@@ -1,5 +1,7 @@
-OBJECTS = loader.o kmain.o io.o fb.o serial.o string.o system.o vfs.o lineedit.o gdt.o gdt_s.o idt.o idt_s.o keyboard.o shell.o snake.o
-AS = nasm
+# Hydra OS — Microkernel Makefile
+# Builds kernel.elf and redlion.iso
+
+NASM = nasm
 ASFLAGS = -f elf
 
 UNAME_S := $(shell uname -s)
@@ -7,22 +9,39 @@ ifneq ($(findstring MINGW,$(UNAME_S))$(findstring MSYS,$(UNAME_S)),)
 CC = clang
 LD = ld.lld
 MKISO = xorriso -as mkisofs
-CFLAGS = -m32 --target=i386-elf -nostdlib -nostdinc -fno-builtin -fno-stack-protector \
-         -nodefaultlibs -Wall -Wextra -Werror -c
+CFLAGS_BASE = -m32 --target=i386-elf -nostdlib -nostdinc -fno-builtin \
+              -fno-stack-protector -nodefaultlibs -Wall -Wextra -Werror -c
 LDFLAGS = -m elf_i386
 else
 CC = gcc
 LD = ld
 MKISO = genisoimage
-CFLAGS = -m32 -nostdlib -nostdinc -fno-builtin -fno-stack-protector \
-         -nostartfiles -nodefaultlibs -Wall -Wextra -Werror -c
-LDFLAGS = -T link.ld -melf_i386
+CFLAGS_BASE = -m32 -nostdlib -nostdinc -fno-builtin -fno-stack-protector \
+              -nostartfiles -nodefaultlibs -Wall -Wextra -Werror -c
+LDFLAGS = -T kernel/link.ld -melf_i386
 endif
 
+INCLUDES = -Ikernel -Ilib -Iservers -Iinclude
+CFLAGS = $(CFLAGS_BASE) $(INCLUDES)
+
+# --- Object lists ---
+KERNEL_ASM = kernel/boot/loader.o kernel/gdt_asm.o kernel/idt_asm.o kernel/io.o \
+             kernel/process_asm.o
+KERNEL_C   = kernel/kmain.o kernel/gdt.o kernel/idt.o kernel/fb.o \
+             kernel/serial.o kernel/keyboard.o kernel/pmm.o \
+             kernel/paging.o kernel/kheap.o kernel/process.o \
+             kernel/pit.o kernel/syscall.o kernel/ipc.o
+LIB_C      = lib/string.o lib/lineedit.o
+SERVER_C   = servers/vfs.o servers/shell.o servers/snake.o servers/system.o \
+             servers/display.o servers/input.o servers/storage.o servers/system_srv.o
+
+OBJECTS = $(KERNEL_ASM) $(KERNEL_C) $(LIB_C) $(SERVER_C)
+
+# --- Targets ---
 all: kernel.elf
 
 kernel.elf: $(OBJECTS)
-	$(LD) -T link.ld $(LDFLAGS) $(OBJECTS) -o kernel.elf
+	$(LD) -T kernel/link.ld $(LDFLAGS) -o kernel.elf $(OBJECTS)
 
 redlion.iso: kernel.elf
 	cp kernel.elf iso/boot/kernel.elf
@@ -40,17 +59,33 @@ redlion.iso: kernel.elf
 run: redlion.iso
 	bochs -f bochsrc.txt -q
 
-gdt_s.o: gdt_asm.s
-	$(AS) $(ASFLAGS) $< -o $@
+# --- Assembly rules ---
+kernel/boot/loader.o: kernel/boot/loader.s
+	$(NASM) $(ASFLAGS) $< -o $@
 
-idt_s.o: idt_asm.s
-	$(AS) $(ASFLAGS) $< -o $@
+kernel/gdt_asm.o: kernel/gdt_asm.s
+	$(NASM) $(ASFLAGS) $< -o $@
 
-%.o: %.c
+kernel/idt_asm.o: kernel/idt_asm.s
+	$(NASM) $(ASFLAGS) $< -o $@
+
+kernel/io.o: kernel/io.s
+	$(NASM) $(ASFLAGS) $< -o $@
+
+kernel/process_asm.o: kernel/process_asm.s
+	$(NASM) $(ASFLAGS) $< -o $@
+
+# --- C rules ---
+kernel/%.o: kernel/%.c
 	$(CC) $(CFLAGS) $< -o $@
 
-%.o: %.s
-	$(AS) $(ASFLAGS) $< -o $@
+lib/%.o: lib/%.c
+	$(CC) $(CFLAGS) $< -o $@
+
+servers/%.o: servers/%.c
+	$(CC) $(CFLAGS) $< -o $@
 
 clean:
-	rm -rf *.o kernel.elf redlion.iso
+	rm -rf kernel/*.o kernel/boot/*.o lib/*.o servers/*.o kernel.elf redlion.iso
+
+.PHONY: all run clean

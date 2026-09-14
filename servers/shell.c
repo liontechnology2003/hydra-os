@@ -6,6 +6,8 @@
 #include "lineedit.h"
 #include "snake.h"
 #include "system.h"
+#include "process.h"
+#include "ipc.h"
 
 /* =========================================================
  *  Stream abstraction (stdout redirection)
@@ -312,8 +314,9 @@ static int builtin_help(char **argv, int argc)
     shell_puts("  hostname [name]   Print or set hostname\n");
     shell_puts("  whoami            Print current user\n");
     shell_puts("  version           Print version information\n");
-    shell_puts("  taskmgr           Show RedLion task manager\n");
-    shell_puts("  ps                List system tasks\n");
+    shell_puts("  taskmgr           Show process manager\n");
+    shell_puts("  ps                List running processes\n");
+    shell_puts("  services          Show registered micro-kernel services\n");
     shell_puts("  sysinfo           Show PC and OS configuration\n");
     shell_puts("  free              Show RAM information\n");
     shell_puts("  edits             Show edited-file memory\n");
@@ -361,8 +364,9 @@ static int builtin_echo(char **argv, int argc)
 static int builtin_about(char **argv, int argc)
 {
     (void)argc; (void)argv;
-    shell_puts("RedLion OS - A minimal x86 operating system\n");
-    shell_puts("Shell: bash-like with scripting, pipes, and virtual filesystem\n");
+    shell_puts("Hydra OS - Micro-kernel operating system\n");
+    shell_puts("Architecture: Ring 0 kernel + Ring 3 user-space servers\n");
+    shell_puts("IPC: Message-passing with service registry\n");
     shell_puts("Built with clang/lld on MSYS2\n");
     return 0;
 }
@@ -563,9 +567,10 @@ static int builtin_whoami(char **argv, int argc)
 static int builtin_version(char **argv, int argc)
 {
     (void)argc; (void)argv;
-    shell_puts("RedLion OS 1.0.0\n");
-    shell_puts("Kernel: i386 monolithic\n");
-    shell_puts("Shell: bash-compatible\n");
+    shell_puts("Hydra OS 2.0.0\n");
+    shell_puts("Kernel: i386 microkernel\n");
+    shell_puts("Servers: display, input, storage, system (ring 3)\n");
+    shell_puts("IPC: message-passing with service registry\n");
     return 0;
 }
 
@@ -655,10 +660,10 @@ static int builtin_sysinfo(char **argv, int argc)
     (void)argc; (void)argv;
 
     fb_set_color(FB_LIGHT_RED, FB_BLACK);
-    shell_puts("RedLion PC Configuration\n");
+    shell_puts("Hydra PC Configuration\n");
     fb_set_color(FB_WHITE, FB_BLACK);
-    shell_puts("OS: RedLion OS 1.0.0\n");
-    shell_puts("Kernel: i386 monolithic\n");
+    shell_puts("OS: Hydra OS 2.0.0\n");
+    shell_puts("Kernel: i386 microkernel\n");
     shell_puts("Boot: GRUB Multiboot\n");
     shell_puts("CPU arch: ");
     shell_puts(system_cpu_arch());
@@ -695,77 +700,31 @@ static int builtin_edits(char **argv, int argc)
     return 0;
 }
 
-typedef struct {
-    int pid;
-    const char *name;
-    const char *state;
-    const char *type;
-    const char *memory;
-    int protected_task;
-} task_info;
-
-static task_info task_table[] = {
-    {1, "kernel",   "running", "core",   "16K", 1},
-    {2, "keyboard", "waiting", "driver", "4K",  1},
-    {3, "vfs",      "ready",   "service","24K", 1},
-    {4, "shell",    "running", "user",   "32K", 1},
-    {5, "snake",    "idle",    "app",    "8K",  0},
-    {0, 0, 0, 0, 0, 0}
-};
-
 static void taskmgr_print_header(void)
 {
     fb_set_color(FB_LIGHT_RED, FB_BLACK);
-    shell_puts("RedLion Task Manager\n");
+    shell_puts("Hydra OS Task Manager\n");
     fb_set_color(FB_WHITE, FB_BLACK);
-    shell_puts("PID  STATE    TYPE     MEM   NAME\n");
-    shell_puts("---  -------  -------  ----  --------\n");
-}
-
-static void taskmgr_print_padded(const char *text, int width)
-{
-    int len = (int)strlen(text);
-
-    shell_puts(text);
-    while (len < width) {
-        shell_putc(' ');
-        len++;
-    }
-}
-
-static void taskmgr_print_list(void)
-{
-    int i;
-
-    taskmgr_print_header();
-    for (i = 0; task_table[i].pid != 0; i++) {
-        shell_print_int(task_table[i].pid);
-        if (task_table[i].pid < 10) {
-            shell_puts("    ");
-        } else {
-            shell_puts("   ");
-        }
-        taskmgr_print_padded(task_table[i].state, 7);
-        shell_puts("  ");
-        taskmgr_print_padded(task_table[i].type, 7);
-        shell_puts("  ");
-        taskmgr_print_padded(task_table[i].memory, 4);
-        shell_puts("  ");
-        shell_puts(task_table[i].name);
-        shell_putc('\n');
-    }
+    shell_puts("PID  NAME          STATE\n");
+    shell_puts("---  ------------  -------\n");
 }
 
 static int builtin_taskmgr(char **argv, int argc)
 {
-    int pid;
-    int i;
+    char buf[2048];
+    int len;
+
+    (void)argc;
 
     if (argc == 1 || strcmp(argv[1], "list") == 0) {
-        taskmgr_print_list();
+        taskmgr_print_header();
+        len = process_query_all(buf, 2048);
+        if (len > 0) {
+            shell_puts(buf);
+        }
         shell_puts("\nRAM: ");
         print_kb_and_mb(system_ram_total_kb());
-        shell_puts("\nCommands: taskmgr list, taskmgr kill <pid>\n");
+        shell_puts("\nCommands: taskmgr list, ps\n");
         return 0;
     }
 
@@ -773,35 +732,30 @@ static int builtin_taskmgr(char **argv, int argc)
         return builtin_sysinfo(argv, argc);
     }
 
-    if (strcmp(argv[1], "kill") == 0) {
-        if (argc < 3) {
-            shell_puts("taskmgr: missing pid\n");
-            return 1;
-        }
-
-        pid = atoi(argv[2]);
-        for (i = 0; task_table[i].pid != 0; i++) {
-            if (task_table[i].pid == pid) {
-                if (task_table[i].protected_task) {
-                    shell_puts("taskmgr: pid ");
-                    shell_print_int(pid);
-                    shell_puts(" is protected\n");
-                    return 1;
-                }
-
-                shell_puts("taskmgr: pid ");
-                shell_print_int(pid);
-                shell_puts(" is not running\n");
-                return 0;
-            }
-        }
-
-        shell_puts("taskmgr: pid not found\n");
-        return 1;
-    }
-
-    shell_puts("Usage: taskmgr [list] | taskmgr kill <pid>\n");
+    shell_puts("Usage: taskmgr [list] | ps\n");
     return 1;
+}
+
+static int builtin_services(char **argv, int argc)
+{
+    char buf[1024];
+    int len;
+
+    (void)argc; (void)argv;
+
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("Hydra OS Micro-Kernel Services\n");
+    fb_set_color(FB_WHITE, FB_BLACK);
+
+    len = ipc_service_status(buf, 1024);
+    if (len > 0) {
+        shell_puts("NAME          PORT  PID\n");
+        shell_puts("------------  ----  ---\n");
+        shell_puts(buf);
+    } else {
+        shell_puts("No services registered.\n");
+    }
+    return 0;
 }
 
 typedef struct {
@@ -839,6 +793,8 @@ static builtin_cmd builtins[] = {
     {"taskmgr",  builtin_taskmgr},
     {"tasks",    builtin_taskmgr},
     {"ps",       builtin_taskmgr},
+    {"services", builtin_services},
+    {"svc",      builtin_services},
     {0, 0}
 };
 
@@ -1329,14 +1285,17 @@ void shell_init(void)
 
     fb_clear();
     fb_set_color(FB_LIGHT_RED, FB_BLACK);
-    shell_puts("redlion 1.0.0 #1 i386 RedLionOS GNU/RedLion\n");
+    shell_puts("hydra 2.0.0 #1 i386 HydraOS GNU/Hydra\n");
     shell_puts("\n");
     fb_set_color(FB_RED, FB_BLACK);
-    shell_puts(" ____          _ _     _             \n");
-    shell_puts("|  _ \\ ___  __| | |   (_) ___  _ __ \n");
-    shell_puts("| |_) / _ \\/ _` | |   | |/ _ \\| '_ \\\n");
-    shell_puts("|  _ <  __/ (_| | |___| | (_) | | | |\n");
-    shell_puts("|_| \\_\\___|\\__,_|_____|_|\\___/|_| |_|\n");
+    shell_puts("  _                     _             \n");
+    shell_puts(" | |                   (_)            \n");
+    shell_puts(" | |__  _   _ _ __ ___  _ _ __   __ _ \n");
+    shell_puts(" | '_ \\| | | | '_ ` _ \\| | '_ \\ / _` |\n");
+    shell_puts(" | | | | |_| | | | | | | | | | | (_| |\n");
+    shell_puts(" |_| |_|\\__,_|_| |_| |_|_|_| |_|\\__, |\n");
+    shell_puts("                                  __/ |\n");
+    shell_puts("                                 |___/ \n");
     fb_set_color(FB_WHITE, FB_BLACK);
     shell_puts("\nType 'help' for available commands.\n\n");
 

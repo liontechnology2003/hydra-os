@@ -1,8 +1,10 @@
 #include "idt.h"
 #include "io.h"
 #include "serial.h"
+#include "pit.h"
+#include "syscall.h"
 
-/* Forward declaration */
+/* Forward declarations */
 void keyboard_handle_interrupt(unsigned char scan_code);
 
 /* IDT entry structure */
@@ -156,6 +158,9 @@ void idt_install(void)
     idt_set_gate(46, interrupt_handler_46, 0x08, 0x8E);
     idt_set_gate(47, interrupt_handler_47, 0x08, 0x8E);
 
+    /* System call interrupt (0x80) - user-callable (DPL=3, type=0xEE) */
+    idt_set_gate(128, interrupt_handler_128, 0x08, 0xEE);
+
     /* Remap the PIC */
     pic_remap(0x20, 0x28);
 
@@ -193,10 +198,26 @@ void interrupt_handler_main(unsigned int *regs)
     serial_write("\n", 1);
     
     /* Handle keyboard interrupt */
-    if (interrupt == 33) {  // 33 = 0x21 in decimal
+    if (interrupt == 33) {  /* 33 = 0x21 = IRQ1 */
         serial_write("KBD!\n", 5);
         unsigned char scan_code = read_scan_code();
         keyboard_handle_interrupt(scan_code);
+        pic_acknowledge(interrupt);
+    } else if (interrupt == 32) {  /* 32 = 0x20 = IRQ0 timer */
+        pit_tick();
+        pic_acknowledge(interrupt);
+    } else if (interrupt == 128) {  /* 0x80 = syscall */
+        /* Stack layout: gs fs es ds edi esi ebp esp ebx edx ecx eax int_no err_code
+         * eax=syscall num, ebx=a1, ecx=a2, edx=a3, edi=a4 */
+        unsigned int *usr = stack_ptr;
+        uint32 ret = syscall_handler(
+            usr[11],  /* eax = syscall number */
+            usr[9],   /* ebx = arg1 */
+            usr[8],   /* ecx = arg2 */
+            usr[7],   /* edx = arg3 */
+            usr[4]    /* edi = arg4 */
+        );
+        usr[11] = ret;  /* Store return value in eax */
         pic_acknowledge(interrupt);
     } else {
         pic_acknowledge(interrupt);
