@@ -316,6 +316,7 @@ static int builtin_help(char **argv, int argc)
     shell_puts("  ps                List system tasks\n");
     shell_puts("  sysinfo           Show PC and OS configuration\n");
     shell_puts("  free              Show RAM information\n");
+    shell_puts("  edits             Show edited-file memory\n");
     shell_puts("  history           Print command history\n");
     shell_puts("  env               Print environment variables\n");
     shell_puts("  export NAME=val   Set an environment variable\n");
@@ -671,6 +672,26 @@ static int builtin_sysinfo(char **argv, int argc)
     shell_puts("Display: VGA text mode 80x25\n");
     shell_puts("Input: PS/2 keyboard IRQ1\n");
     shell_puts("Filesystem: in-memory VFS\n");
+    shell_puts("Session memory: edited files tracked in RAM\n");
+    return 0;
+}
+
+static int builtin_edits(char **argv, int argc)
+{
+    char buf[1024];
+
+    if (argc > 1 && strcmp(argv[1], "clear") == 0) {
+        vfs_edits_clear();
+        shell_puts("edited-file memory cleared\n");
+        return 0;
+    }
+
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("Edited Files Memory\n");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    vfs_edits_list(buf, 1024);
+    shell_puts(buf);
+    shell_puts("Commands: edits, edits clear\n");
     return 0;
 }
 
@@ -813,6 +834,8 @@ static builtin_cmd builtins[] = {
     {"pcinfo",   builtin_sysinfo},
     {"free",     builtin_free},
     {"meminfo",  builtin_free},
+    {"edits",    builtin_edits},
+    {"recent",   builtin_edits},
     {"taskmgr",  builtin_taskmgr},
     {"tasks",    builtin_taskmgr},
     {"ps",       builtin_taskmgr},

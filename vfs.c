@@ -16,6 +16,16 @@ static int node_count = 0;
 static int cwd = 0;   /* node index of current working directory */
 static int home = 0;  /* node index of /home/redlion */
 
+typedef struct vfs_edit_entry {
+    char path[VFS_PATH_MAX];
+    char action[12];
+    int count;
+} vfs_edit_entry;
+
+static vfs_edit_entry edit_log[VFS_EDIT_MAX];
+static int edit_count = 0;
+static int edit_tracking = 0;
+
 /** vfs_make_node:
  *  Allocates a new node, returning its index or -1 on failure.
  */
@@ -104,6 +114,110 @@ static int vfs_split_parent(const char *path, int *parent_idx, char *basename)
     return VFS_ERR_OK;
 }
 
+static void vfs_buf_append(char *buf, int maxlen, int *pos, const char *text)
+{
+    while (*text && *pos < maxlen - 1) {
+        buf[*pos] = *text;
+        (*pos)++;
+        text++;
+    }
+    if (maxlen > 0) {
+        buf[*pos < maxlen ? *pos : maxlen - 1] = '\0';
+    }
+}
+
+static void vfs_buf_append_padded(char *buf, int maxlen, int *pos, const char *text, int width)
+{
+    int len = (int)strlen(text);
+
+    vfs_buf_append(buf, maxlen, pos, text);
+    while (len < width && *pos < maxlen - 1) {
+        buf[*pos] = ' ';
+        (*pos)++;
+        buf[*pos] = '\0';
+        len++;
+    }
+}
+
+static void vfs_node_path(int idx, char *buf, int maxlen)
+{
+    char parts[16][VFS_NAME_MAX];
+    int depth = 0;
+    int i;
+    int pos = 0;
+
+    if (maxlen <= 0) {
+        return;
+    }
+
+    if (idx <= 0) {
+        buf[0] = '/';
+        buf[1] = '\0';
+        return;
+    }
+
+    while (idx > 0 && depth < 16) {
+        strncpy(parts[depth], nodes[idx].name, VFS_NAME_MAX - 1);
+        parts[depth][VFS_NAME_MAX - 1] = '\0';
+        depth++;
+        idx = nodes[idx].parent;
+    }
+
+    buf[pos++] = '/';
+    for (i = depth - 1; i >= 0; i--) {
+        vfs_buf_append(buf, maxlen, &pos, parts[i]);
+        if (i > 0 && pos < maxlen - 1) {
+            buf[pos++] = '/';
+            buf[pos] = '\0';
+        }
+    }
+}
+
+static void vfs_build_child_path(int parent_idx, const char *name, char *buf, int maxlen)
+{
+    int pos;
+
+    vfs_node_path(parent_idx, buf, maxlen);
+    pos = (int)strlen(buf);
+    if (pos > 1 && pos < maxlen - 1) {
+        buf[pos++] = '/';
+        buf[pos] = '\0';
+    }
+    vfs_buf_append(buf, maxlen, &pos, name);
+}
+
+static void vfs_remember_edit(const char *path, const char *action)
+{
+    int i;
+
+    if (!edit_tracking || !path || path[0] == '\0') {
+        return;
+    }
+
+    for (i = 0; i < edit_count; i++) {
+        if (strcmp(edit_log[i].path, path) == 0) {
+            strncpy(edit_log[i].action, action, 11);
+            edit_log[i].action[11] = '\0';
+            edit_log[i].count++;
+            return;
+        }
+    }
+
+    if (edit_count >= VFS_EDIT_MAX) {
+        for (i = 1; i < VFS_EDIT_MAX; i++) {
+            edit_log[i - 1] = edit_log[i];
+        }
+        edit_count = VFS_EDIT_MAX - 1;
+    }
+
+    strncpy(edit_log[edit_count].path, path, VFS_PATH_MAX - 1);
+    edit_log[edit_count].path[VFS_PATH_MAX - 1] = '\0';
+    strncpy(edit_log[edit_count].action, action, 11);
+    edit_log[edit_count].action[11] = '\0';
+    edit_log[edit_count].count = 1;
+    edit_count++;
+}
+
 /** vfs_path_depth:
  *  Returns the number of components in an absolute path.
  */
@@ -174,6 +288,8 @@ int vfs_resolve(const char *path)
 void vfs_init(void)
 {
     node_count = 0;
+    edit_count = 0;
+    edit_tracking = 0;
     cwd = vfs_make_node("", -1, 1);
     vfs_make_node("home", 0, 1);
     vfs_mkdir("/home/redlion");
@@ -223,6 +339,7 @@ void vfs_init(void)
         -1, 1);
 
     cwd = home;
+    edit_tracking = 1;
 }
 
 /** vfs_name:
@@ -314,6 +431,7 @@ int vfs_write_file(const char *path, const char *content, int len, int flags)
     int parent_idx;
     int new_idx;
     char basename[VFS_NAME_MAX];
+    char edit_path[VFS_PATH_MAX];
     int r;
 
     r = vfs_split_parent(path, &parent_idx, basename);
@@ -324,6 +442,7 @@ int vfs_write_file(const char *path, const char *content, int len, int flags)
     /* If the file exists, overwrite/append */
     idx = vfs_find_child(parent_idx, basename);
     if (idx >= 0 && !nodes[idx].is_dir) {
+        vfs_build_child_path(parent_idx, basename, edit_path, VFS_PATH_MAX);
         if (flags == 2) {
             /* append */
             int space = VFS_CONTENT_MAX - nodes[idx].size;
@@ -347,6 +466,7 @@ int vfs_write_file(const char *path, const char *content, int len, int flags)
                 nodes[idx].size = to_write;
             }
         }
+        vfs_remember_edit(edit_path, flags == 2 ? "append" : "write");
         return VFS_ERR_OK;
     }
 
@@ -370,7 +490,42 @@ int vfs_write_file(const char *path, const char *content, int len, int flags)
         memcpy(nodes[new_idx].content, content, len);
         nodes[new_idx].size = len;
     }
+    vfs_build_child_path(parent_idx, basename, edit_path, VFS_PATH_MAX);
+    vfs_remember_edit(edit_path, "create");
     return VFS_ERR_OK;
+}
+
+int vfs_edits_list(char *buf, int maxlen)
+{
+    int i;
+    int pos = 0;
+    char count_buf[16];
+
+    if (maxlen <= 0 || buf == 0) {
+        return 0;
+    }
+
+    buf[0] = '\0';
+    if (edit_count == 0) {
+        vfs_buf_append(buf, maxlen, &pos, "No edited files remembered.\n");
+        return pos;
+    }
+
+    vfs_buf_append(buf, maxlen, &pos, "ACTION      COUNT  FILE\n");
+    vfs_buf_append(buf, maxlen, &pos, "----------  -----  ----------------\n");
+    for (i = 0; i < edit_count; i++) {
+        vfs_buf_append_padded(buf, maxlen, &pos, edit_log[i].action, 12);
+        itoa(count_buf, edit_log[i].count);
+        vfs_buf_append_padded(buf, maxlen, &pos, count_buf, 7);
+        vfs_buf_append(buf, maxlen, &pos, edit_log[i].path);
+        vfs_buf_append(buf, maxlen, &pos, "\n");
+    }
+    return pos;
+}
+
+void vfs_edits_clear(void)
+{
+    edit_count = 0;
 }
 
 /** vfs_mkdir:
@@ -409,9 +564,14 @@ int vfs_mkdir(const char *path)
 int vfs_touch(const char *path)
 {
     int idx;
+    char edit_path[VFS_PATH_MAX];
 
     idx = vfs_resolve(path);
     if (idx >= 0) {
+        if (!nodes[idx].is_dir) {
+            vfs_node_path(idx, edit_path, VFS_PATH_MAX);
+            vfs_remember_edit(edit_path, "touch");
+        }
         return VFS_ERR_OK;
     }
     return vfs_write_file(path, "", 0, 1);

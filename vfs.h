@@ -5,6 +5,7 @@
 #define VFS_CONTENT_MAX 512
 #define VFS_MAX_NODES   64
 #define VFS_PATH_MAX    128
+#define VFS_EDIT_MAX    16
 
 #define VFS_ERR_OK          0
 #define VFS_ERR_NOT_FOUND   (-1)
@@ -61,6 +62,17 @@ int vfs_read_file(const char *path, char *buf, int maxlen);
  *  Returns VFS_ERR_OK on success.
  */
 int vfs_write_file(const char *path, const char *content, int len, int flags);
+
+/** vfs_edits_list:
+ *  Lists files created or edited during this session into buf.
+ *  Returns bytes written to buf.
+ */
+int vfs_edits_list(char *buf, int maxlen);
+
+/** vfs_edits_clear:
+ *  Clears the edited-file session memory.
+ */
+void vfs_edits_clear(void);
 
 /** vfs_mkdir:
  *  Creates a directory.
