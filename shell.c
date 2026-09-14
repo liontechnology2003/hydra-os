@@ -5,6 +5,7 @@
 #include "vfs.h"
 #include "lineedit.h"
 #include "snake.h"
+#include "system.h"
 
 /* =========================================================
  *  Stream abstraction (stdout redirection)
@@ -72,7 +73,7 @@ static void env_init(void)
     strcpy(env_table[env_count++], "HOSTNAME=redlion");
     strcpy(env_table[env_count++], "SHELL=/bin/bash");
     strcpy(env_table[env_count++], "PATH=/usr/bin:/bin");
-    strcpy(env_table[env_count++], "TERM=linux");
+    strcpy(env_table[env_count++], "TERM=redlion");
     strcpy(env_table[env_count++], "LOGNAME=redlion");
 }
 
@@ -313,6 +314,8 @@ static int builtin_help(char **argv, int argc)
     shell_puts("  version           Print version information\n");
     shell_puts("  taskmgr           Show RedLion task manager\n");
     shell_puts("  ps                List system tasks\n");
+    shell_puts("  sysinfo           Show PC and OS configuration\n");
+    shell_puts("  free              Show RAM information\n");
     shell_puts("  history           Print command history\n");
     shell_puts("  env               Print environment variables\n");
     shell_puts("  export NAME=val   Set an environment variable\n");
@@ -528,12 +531,12 @@ static int builtin_cat(char **argv, int argc)
 static int builtin_uname(char **argv, int argc)
 {
     if (argc > 1 && strcmp(argv[1], "-a") == 0) {
-        shell_puts("Linux redlion 1.0.0 #1 ");
+        shell_puts(" redlion 1.0.0 #1 ");
         shell_puts(__DATE__);
         shell_puts(" i386 RedLionOS GNU/RedLion\n");
         return 0;
     }
-    shell_puts("Linux\n");
+    shell_puts("RedLionOS\n");
     return 0;
 }
 
@@ -616,6 +619,61 @@ static int builtin_play(char **argv, int argc)
     return 0;
 }
 
+static void print_kb_and_mb(unsigned int kb)
+{
+    shell_print_unsigned(kb);
+    shell_puts(" KB (");
+    shell_print_unsigned(kb / 1024);
+    shell_puts(" MB)");
+}
+
+static int builtin_free(char **argv, int argc)
+{
+    (void)argc; (void)argv;
+
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("RAM Information\n");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    shell_puts("Total: ");
+    print_kb_and_mb(system_ram_total_kb());
+    shell_putc('\n');
+    shell_puts("Lower: ");
+    print_kb_and_mb(system_ram_lower_kb());
+    shell_putc('\n');
+    shell_puts("Upper: ");
+    print_kb_and_mb(system_ram_upper_kb());
+    shell_putc('\n');
+    shell_puts("Source: ");
+    shell_puts(system_ram_detected() ? "Multiboot" : "default config");
+    shell_putc('\n');
+    return 0;
+}
+
+static int builtin_sysinfo(char **argv, int argc)
+{
+    (void)argc; (void)argv;
+
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("RedLion PC Configuration\n");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    shell_puts("OS: RedLion OS 1.0.0\n");
+    shell_puts("Kernel: i386 monolithic\n");
+    shell_puts("Boot: GRUB Multiboot\n");
+    shell_puts("CPU arch: ");
+    shell_puts(system_cpu_arch());
+    shell_putc('\n');
+    shell_puts("CPU vendor: ");
+    shell_puts(system_cpu_vendor());
+    shell_putc('\n');
+    shell_puts("RAM: ");
+    print_kb_and_mb(system_ram_total_kb());
+    shell_putc('\n');
+    shell_puts("Display: VGA text mode 80x25\n");
+    shell_puts("Input: PS/2 keyboard IRQ1\n");
+    shell_puts("Filesystem: in-memory VFS\n");
+    return 0;
+}
+
 typedef struct {
     int pid;
     const char *name;
@@ -684,8 +742,14 @@ static int builtin_taskmgr(char **argv, int argc)
 
     if (argc == 1 || strcmp(argv[1], "list") == 0) {
         taskmgr_print_list();
+        shell_puts("\nRAM: ");
+        print_kb_and_mb(system_ram_total_kb());
         shell_puts("\nCommands: taskmgr list, taskmgr kill <pid>\n");
         return 0;
+    }
+
+    if (strcmp(argv[1], "info") == 0) {
+        return builtin_sysinfo(argv, argc);
     }
 
     if (strcmp(argv[1], "kill") == 0) {
@@ -745,6 +809,10 @@ static builtin_cmd builtins[] = {
     {"set",      builtin_env},
     {"unset",    builtin_unset},
     {"play",     builtin_play},
+    {"sysinfo",  builtin_sysinfo},
+    {"pcinfo",   builtin_sysinfo},
+    {"free",     builtin_free},
+    {"meminfo",  builtin_free},
     {"taskmgr",  builtin_taskmgr},
     {"tasks",    builtin_taskmgr},
     {"ps",       builtin_taskmgr},
@@ -1238,7 +1306,7 @@ void shell_init(void)
 
     fb_clear();
     fb_set_color(FB_LIGHT_RED, FB_BLACK);
-    shell_puts("Linux redlion 1.0.0 #1 i386 RedLionOS GNU/RedLion\n");
+    shell_puts("redlion 1.0.0 #1 i386 RedLionOS GNU/RedLion\n");
     shell_puts("\n");
     fb_set_color(FB_RED, FB_BLACK);
     shell_puts(" ____          _ _     _             \n");

@@ -1,4 +1,4 @@
-OBJECTS = loader.o kmain.o io.o fb.o serial.o string.o vfs.o lineedit.o gdt.o gdt_s.o idt.o idt_s.o keyboard.o shell.o snake.o
+OBJECTS = loader.o kmain.o io.o fb.o serial.o string.o system.o vfs.o lineedit.o gdt.o gdt_s.o idt.o idt_s.o keyboard.o shell.o snake.o
 AS = nasm
 ASFLAGS = -f elf
 

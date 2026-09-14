@@ -16,6 +16,8 @@ loader:                         ; the loader label (defined as entry point in li
     mov esp, kernel_stack + KERNEL_STACK_SIZE   ; point esp to the start of the stack
     
     extern kmain
+    push ebx                    ; multiboot info pointer
+    push eax                    ; multiboot magic
     call kmain                  ; call the C function
     
 .loop:

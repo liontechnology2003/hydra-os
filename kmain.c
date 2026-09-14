@@ -4,8 +4,9 @@
 #include "idt.h"
 #include "keyboard.h"
 #include "shell.h"
+#include "system.h"
 
-int kmain(void)
+int kmain(unsigned int multiboot_magic, unsigned int multiboot_info_addr)
 {
     /* Configure serial port */
     serial_configure_baud_rate(SERIAL_COM1_BASE, 3);
@@ -27,6 +28,10 @@ int kmain(void)
     /* Initialize keyboard */
     keyboard_init();
     serial_write("Keyboard initialized\n", 21);
+
+    /* Detect basic machine information */
+    system_init(multiboot_magic, multiboot_info_addr);
+    serial_write("System info initialized\n", 24);
     
     /* Enable interrupts */
     __asm__ ("sti");
