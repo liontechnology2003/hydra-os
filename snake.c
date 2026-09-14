@@ -94,7 +94,7 @@ void int_to_str(int num, char *str) {
 }
 
 /* Draw a character at a specific position */
-void draw_at(int x, int y, char c) {
+void draw_at_color(int x, int y, char c, unsigned char fg) {
     if (x < 0 || x >= GAME_WIDTH || y < 0 || y >= GAME_HEIGHT) {
         return;
     }
@@ -105,7 +105,11 @@ void draw_at(int x, int y, char c) {
     /* Direct framebuffer access */
     char *fb = (char *) 0x000B8000;
     fb[pos * 2] = c;
-    fb[pos * 2 + 1] = 0x0F;  /* White on black */
+    fb[pos * 2 + 1] = fg & 0x0F;
+}
+
+void draw_at(int x, int y, char c) {
+    draw_at_color(x, y, c, FB_WHITE);
 }
 
 /* Draw centered text */
@@ -136,14 +140,14 @@ void draw_border(void) {
     
     /* Top and bottom borders */
     for (i = 0; i < GAME_WIDTH; i++) {
-        draw_at(i, 0, '#');
-        draw_at(i, GAME_HEIGHT - 1, '#');
+        draw_at_color(i, 0, '#', FB_RED);
+        draw_at_color(i, GAME_HEIGHT - 1, '#', FB_RED);
     }
     
     /* Left and right borders */
     for (i = 0; i < GAME_HEIGHT; i++) {
-        draw_at(0, i, '#');
-        draw_at(GAME_WIDTH - 1, i, '#');
+        draw_at_color(0, i, '#', FB_RED);
+        draw_at_color(GAME_WIDTH - 1, i, '#', FB_RED);
     }
 }
 
@@ -184,7 +188,9 @@ int calculate_delay(void) {
 void init_game(void) {
     /* Clear screen and draw UI */
     fb_clear();
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
     fb_puts("SNAKE GAME - Use (W A S D) to move, Q to quit\n");
+    fb_set_color(FB_WHITE, FB_BLACK);
     fb_puts("Score: 0\n");
     
     /* Initialize snake in the middle */
@@ -253,16 +259,16 @@ void draw_snake(void) {
     int i;
     for (i = 0; i < snake_length; i++) {
         if (i == 0) {
-            draw_at(snake[i].x, snake[i].y, 'O');  /* Head */
+            draw_at_color(snake[i].x, snake[i].y, 'O', FB_LIGHT_RED);  /* Head */
         } else {
-            draw_at(snake[i].x, snake[i].y, 'o');  /* Body */
+            draw_at_color(snake[i].x, snake[i].y, 'o', FB_RED);  /* Body */
         }
     }
 }
 
 /* Draw the food */
 void draw_food(void) {
-    draw_at(food.x, food.y, '*');
+    draw_at_color(food.x, food.y, '*', FB_LIGHT_RED);
 }
 
 /* Check collision with walls or self */
@@ -408,7 +414,9 @@ void snake_game(void) {
         /* Game over screen */
         if (game_over == 1) {
             fb_clear();
+            fb_set_color(FB_LIGHT_RED, FB_BLACK);
             fb_puts("GAME OVER!\n\n");
+            fb_set_color(FB_WHITE, FB_BLACK);
             fb_puts("Final Score: ");
             
             char score_str[20];

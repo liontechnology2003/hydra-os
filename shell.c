@@ -1101,7 +1101,7 @@ static void draw_prompt(void)
 
     vfs_cwd_path(cwd_path, VFS_PATH_MAX);
 
-    fb_set_color(FB_GREEN, FB_BLACK);
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
     shell_puts(env_get("USER"));
     shell_puts("@");
     shell_puts(env_get("HOSTNAME"));
@@ -1109,7 +1109,7 @@ static void draw_prompt(void)
     fb_set_color(FB_WHITE, FB_BLACK);
     shell_puts(":");
 
-    fb_set_color(FB_LIGHT_BLUE, FB_BLACK);
+    fb_set_color(FB_RED, FB_BLACK);
     shell_puts(cwd_path);
 
     fb_set_color(FB_WHITE, FB_BLACK);
@@ -1129,10 +1129,10 @@ void shell_init(void)
     vfs_init();
 
     fb_clear();
-    fb_set_color(FB_LIGHT_GREEN, FB_BLACK);
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
     shell_puts("Linux redlion 1.0.0 #1 i386 RedLionOS GNU/RedLion\n");
     shell_puts("\n");
-    fb_set_color(FB_LIGHT_CYAN, FB_BLACK);
+    fb_set_color(FB_RED, FB_BLACK);
     shell_puts(" ____          _ _     _             \n");
     shell_puts("|  _ \\ ___  __| | |   (_) ___  _ __ \n");
     shell_puts("| |_) / _ \\/ _` | |   | |/ _ \\| '_ \\\n");
