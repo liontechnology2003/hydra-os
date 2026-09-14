@@ -49,6 +49,61 @@ static int vfs_find_child(int parent_idx, const char *name)
     return -1;
 }
 
+/** vfs_split_parent:
+ *  Splits a path into parent node and final name.
+ */
+static int vfs_split_parent(const char *path, int *parent_idx, char *basename)
+{
+    char parent_path[VFS_PATH_MAX];
+    int len;
+    int slash;
+    int name_len;
+
+    if (!path || path[0] == '\0') {
+        return VFS_ERR_NOT_FOUND;
+    }
+
+    len = (int)strlen(path);
+    while (len > 1 && path[len - 1] == '/') {
+        len--;
+    }
+
+    slash = len - 1;
+    while (slash >= 0 && path[slash] != '/') {
+        slash--;
+    }
+
+    name_len = len - slash - 1;
+    if (name_len <= 0) {
+        return VFS_ERR_NOT_FOUND;
+    }
+    if (name_len >= VFS_NAME_MAX) {
+        name_len = VFS_NAME_MAX - 1;
+    }
+
+    strncpy(basename, path + slash + 1, name_len);
+    basename[name_len] = '\0';
+
+    if (slash < 0) {
+        *parent_idx = cwd;
+    } else if (slash == 0) {
+        *parent_idx = 0;
+    } else {
+        strncpy(parent_path, path, slash);
+        parent_path[slash] = '\0';
+        *parent_idx = vfs_resolve(parent_path);
+    }
+
+    if (*parent_idx < 0) {
+        return VFS_ERR_NOT_FOUND;
+    }
+    if (!nodes[*parent_idx].is_dir) {
+        return VFS_ERR_NOT_DIR;
+    }
+
+    return VFS_ERR_OK;
+}
+
 /** vfs_path_depth:
  *  Returns the number of components in an absolute path.
  */
@@ -120,8 +175,9 @@ void vfs_init(void)
 {
     node_count = 0;
     cwd = vfs_make_node("", -1, 1);
-    home = vfs_make_node("home", 0, 1);
+    vfs_make_node("home", 0, 1);
     vfs_mkdir("/home/redlion");
+    home = vfs_resolve("/home/redlion");
     vfs_mkdir("/root");
     vfs_mkdir("/bin");
     vfs_mkdir("/boot");
@@ -129,8 +185,10 @@ void vfs_init(void)
     vfs_mkdir("/etc");
     vfs_mkdir("/proc");
     vfs_mkdir("/tmp");
+    vfs_mkdir("/usr");
     vfs_mkdir("/usr/bin");
     vfs_mkdir("/usr/lib");
+    vfs_mkdir("/var");
     vfs_mkdir("/var/log");
 
     vfs_write_file("/etc/motd",
@@ -255,39 +313,12 @@ int vfs_write_file(const char *path, const char *content, int len, int flags)
     int idx;
     int parent_idx;
     int new_idx;
-    char name_buf[VFS_NAME_MAX];
-    const char *basename;
-    int i;
+    char basename[VFS_NAME_MAX];
+    int r;
 
-    /* Find the basename of the path */
-    basename = path;
-    i = strlen(path);
-    while (i > 0 && path[i - 1] == '/') {
-        i--;
-    }
-    i--;
-    if (i > 0 && path[i - 1] == '/') {
-        i--;
-    }
-    /* i now points to the last '/' before the name, or -1 */
-    if (i < 0) {
-        if (*path == '/') {
-            return VFS_ERR_NOT_FOUND;
-        }
-        /* bare filename – relative to cwd */
-        basename = path;
-        parent_idx = cwd;
-    } else {
-        basename = path + i + 1;
-        strncpy(name_buf, path, i + 1);
-        name_buf[i + 1] = '\0';
-        parent_idx = vfs_resolve(name_buf);
-        if (parent_idx < 0) {
-            return VFS_ERR_NOT_FOUND;
-        }
-        if (!nodes[parent_idx].is_dir) {
-            return VFS_ERR_NOT_DIR;
-        }
+    r = vfs_split_parent(path, &parent_idx, basename);
+    if (r != VFS_ERR_OK) {
+        return r;
     }
 
     /* If the file exists, overwrite/append */
@@ -349,41 +380,16 @@ int vfs_mkdir(const char *path)
 {
     int parent_idx;
     int new_idx;
-    char name_buf[VFS_NAME_MAX];
-    const char *basename;
-    int i;
+    char basename[VFS_NAME_MAX];
+    int r;
 
     if (strcmp(path, "/") == 0) {
         return VFS_ERR_EXISTS;
     }
 
-    basename = path;
-    i = strlen(path);
-    while (i > 0 && path[i - 1] == '/') {
-        i--;
-    }
-    i--;
-    if (i > 0 && path[i - 1] == '/') {
-        i--;
-    }
-
-    if (i < 0) {
-        if (*path == '/') {
-            return VFS_ERR_EXISTS;
-        }
-        basename = path;
-        parent_idx = cwd;
-    } else {
-        basename = path + i + 1;
-        strncpy(name_buf, path, i + 1);
-        name_buf[i + 1] = '\0';
-        parent_idx = vfs_resolve(name_buf);
-        if (parent_idx < 0) {
-            return VFS_ERR_NOT_FOUND;
-        }
-        if (!nodes[parent_idx].is_dir) {
-            return VFS_ERR_NOT_DIR;
-        }
+    r = vfs_split_parent(path, &parent_idx, basename);
+    if (r != VFS_ERR_OK) {
+        return r;
     }
 
     if (vfs_find_child(parent_idx, basename) >= 0) {
