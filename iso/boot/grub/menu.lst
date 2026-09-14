@@ -1,5 +1,5 @@
 default=0
 timeout 1
 
-title Hydra OS
+title RedLion OS
 kernel /boot/kernel.elf

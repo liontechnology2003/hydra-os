@@ -24,7 +24,7 @@ all: kernel.elf
 kernel.elf: $(OBJECTS)
 	$(LD) -T link.ld $(LDFLAGS) $(OBJECTS) -o kernel.elf
 
-hydra.iso: kernel.elf
+redlion.iso: kernel.elf
 	cp kernel.elf iso/boot/kernel.elf
 	$(MKISO) -R \
 	            -b boot/grub/stage2_eltorito \
@@ -34,10 +34,10 @@ hydra.iso: kernel.elf
 	            -input-charset utf8 \
 	            -quiet \
 	            -boot-info-table \
-	            -o hydra.iso \
+	            -o redlion.iso \
 	            iso
 
-run: hydra.iso
+run: redlion.iso
 	bochs -f bochsrc.txt -q
 
 gdt_s.o: gdt_asm.s
@@ -53,4 +53,4 @@ idt_s.o: idt_asm.s
 	$(AS) $(ASFLAGS) $< -o $@
 
 clean:
-	rm -rf *.o kernel.elf hydra.iso
+	rm -rf *.o kernel.elf redlion.iso

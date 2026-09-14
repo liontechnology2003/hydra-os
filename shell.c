@@ -67,13 +67,13 @@ static int  env_count = 0;
 static void env_init(void)
 {
     env_count = 0;
-    strcpy(env_table[env_count++], "USER=hydra");
-    strcpy(env_table[env_count++], "HOME=/home/hydra");
-    strcpy(env_table[env_count++], "HOSTNAME=hydra");
+    strcpy(env_table[env_count++], "USER=redlion");
+    strcpy(env_table[env_count++], "HOME=/home/redlion");
+    strcpy(env_table[env_count++], "HOSTNAME=redlion");
     strcpy(env_table[env_count++], "SHELL=/bin/bash");
     strcpy(env_table[env_count++], "PATH=/usr/bin:/bin");
     strcpy(env_table[env_count++], "TERM=linux");
-    strcpy(env_table[env_count++], "LOGNAME=hydra");
+    strcpy(env_table[env_count++], "LOGNAME=redlion");
 }
 
 static const char *env_get(const char *name)
@@ -355,7 +355,7 @@ static int builtin_echo(char **argv, int argc)
 static int builtin_about(char **argv, int argc)
 {
     (void)argc; (void)argv;
-    shell_puts("HydraOS - A minimal x86 operating system\n");
+    shell_puts("RedLion OS - A minimal x86 operating system\n");
     shell_puts("Shell: bash-like with scripting, pipes, and virtual filesystem\n");
     shell_puts("Built with clang/lld on MSYS2\n");
     return 0;
@@ -526,9 +526,9 @@ static int builtin_cat(char **argv, int argc)
 static int builtin_uname(char **argv, int argc)
 {
     if (argc > 1 && strcmp(argv[1], "-a") == 0) {
-        shell_puts("Linux hydra 1.0.0 #1 ");
+        shell_puts("Linux redlion 1.0.0 #1 ");
         shell_puts(__DATE__);
-        shell_puts(" i386 HydraOS GNU/Hydra\n");
+        shell_puts(" i386 RedLionOS GNU/RedLion\n");
         return 0;
     }
     shell_puts("Linux\n");
@@ -557,7 +557,7 @@ static int builtin_whoami(char **argv, int argc)
 static int builtin_version(char **argv, int argc)
 {
     (void)argc; (void)argv;
-    shell_puts("HydraOS 1.0.0\n");
+    shell_puts("RedLion OS 1.0.0\n");
     shell_puts("Kernel: i386 monolithic\n");
     shell_puts("Shell: bash-compatible\n");
     return 0;
@@ -1130,15 +1130,14 @@ void shell_init(void)
 
     fb_clear();
     fb_set_color(FB_LIGHT_GREEN, FB_BLACK);
-    shell_puts("Linux hydra 1.0.0 #1 i386 HydraOS GNU/Hydra\n");
+    shell_puts("Linux redlion 1.0.0 #1 i386 RedLionOS GNU/RedLion\n");
     shell_puts("\n");
     fb_set_color(FB_LIGHT_CYAN, FB_BLACK);
-    shell_puts("    _   _                       \n");
-    shell_puts("   | | | | __ _ _ __   __ _ ___\n");
-    shell_puts("   | |_| |/ _` | '_ \\ / _` / __|\n");
-    shell_puts("   |  _  | (_| | | | | (_| \\__ \\\n");
-    shell_puts("   |_| |_|\\__,_|_| |_|\\__, |___/\n");
-    shell_puts("                       |___/    \n");
+    shell_puts(" ____          _ _     _             \n");
+    shell_puts("|  _ \\ ___  __| | |   (_) ___  _ __ \n");
+    shell_puts("| |_) / _ \\/ _` | |   | |/ _ \\| '_ \\\n");
+    shell_puts("|  _ <  __/ (_| | |___| | (_) | | | |\n");
+    shell_puts("|_| \\_\\___|\\__,_|_____|_|\\___/|_| |_|\n");
     fb_set_color(FB_WHITE, FB_BLACK);
     shell_puts("\nType 'help' for available commands.\n\n");
 

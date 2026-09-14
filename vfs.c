@@ -14,7 +14,7 @@ typedef struct vfs_node {
 static vfs_node nodes[VFS_MAX_NODES];
 static int node_count = 0;
 static int cwd = 0;   /* node index of current working directory */
-static int home = 0;  /* node index of /home/hydra */
+static int home = 0;  /* node index of /home/redlion */
 
 /** vfs_make_node:
  *  Allocates a new node, returning its index or -1 on failure.
@@ -54,7 +54,7 @@ static int vfs_find_child(int parent_idx, const char *name)
  */
 /** vfs_resolve:
  *  Resolves a path (absolute or relative) to a node index.
- *  "~" expands to /home/hydra.
+ *  "~" expands to /home/redlion.
  */
 int vfs_resolve(const char *path)
 {
@@ -121,7 +121,7 @@ void vfs_init(void)
     node_count = 0;
     cwd = vfs_make_node("", -1, 1);
     home = vfs_make_node("home", 0, 1);
-    vfs_mkdir("/home/hydra");
+    vfs_mkdir("/home/redlion");
     vfs_mkdir("/root");
     vfs_mkdir("/bin");
     vfs_mkdir("/boot");
@@ -143,22 +143,22 @@ void vfs_init(void)
         -1, 1);
 
     vfs_write_file("/etc/hostname",
-        "hydra", -1, 1);
+        "redlion", -1, 1);
 
     vfs_write_file("/etc/os-release",
-        "NAME=\"HydraOS\"\n"
+        "NAME=\"RedLion OS\"\n"
         "VERSION=\"1.0.0\"\n"
-        "ID=hydra\n"
-        "PRETTY_NAME=\"HydraOS GNU/Hydra 1.0.0\"\n"
-        "HOME_URL=\"https://github.com/anass/hydra-os\"\n",
+        "ID=redlion\n"
+        "PRETTY_NAME=\"RedLion OS 1.0.0\"\n"
+        "HOME_URL=\"https://github.com/anass/redlion-os\"\n",
         -1, 1);
 
-    vfs_write_file("/home/hydra/welcome.txt",
-        "Welcome to HydraOS!\n"
+    vfs_write_file("/home/redlion/welcome.txt",
+        "Welcome to RedLion OS!\n"
         "Type 'help' for available commands.\n",
         -1, 1);
 
-    vfs_write_file("/home/hydra/todo.txt",
+    vfs_write_file("/home/redlion/todo.txt",
         "1. Improve keyboard driver\n"
         "2. Add process scheduler\n"
         "3. Add ext2 filesystem\n",
