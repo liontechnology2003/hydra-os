@@ -67,63 +67,68 @@ global switch_to_user_mode
 ; void process_context_switch(process_t *next)
 ; Saves current process registers from the interrupt frame on the kernel stack,
 ; loads next process's registers, and returns via iretd.
+;
+; Called from process_schedule(), which is called from the timer ISR. At entry
+; esp points to the return address pushed by 'call process_schedule'. The full
+; interrupt frame sits ABOVE that return address, laid out as in idt_asm.s:
+;   [esp+4]  ss       [esp+8]  esp      [esp+12] eflags
+;   [esp+16] cs       [esp+20] eip      [esp+24] err_code
+;   [esp+28] int_num  [esp+32] eax      [esp+36] ecx
+;   [esp+40] edx      [esp+44] ebx      [esp+48] esp_orig
+;   [esp+52] ebp      [esp+56] esi      [esp+60] edi
+;   [esp+64] ds       [esp+68] es       [esp+72] fs
+;   [esp+76] gs
 process_context_switch:
-    mov eax, [esp+4]            ; eax = &next->regs (pointer to regs_t)
+    ; eax = &next->regs (arg at [esp+4])
+    mov eax, [esp+4]
 
     extern current_proc
     cmp dword [current_proc], 0
     je .initial_launch
 
-    ; --- Save current process registers from the kernel interrupt frame ---
-    ; The interrupt frame is at the TOP of the current kernel stack (near kernel_esp).
-    ; current_proc->kernel_esp points to the top of the kernel stack.
-    ; The interrupt handler pushes: pusha (32) + ds/es/fs/gs (16) + esp (4) = 52 bytes
-    ; plus CPU-pushed frame: ss/esp/eflags/cs/eip/err/int = 28 bytes (with error code)
-    ; Total offset from kernel_esp ≈ 80 bytes.
+    ; --- Save current process registers from the interrupt frame ---
+    ; esp+4 is the base of the interrupt frame (ss).
+    mov ecx, esp
+    add ecx, 4                       ; ecx = &interrupt_frame[0] (ss)
 
     mov ebx, [current_proc]
-    mov ecx, [ebx + PROC_KERNEL_ESP]   ; ecx = kernel_esp (top of stack)
-    sub ecx, 24                         ; ecx = interrupt frame start (kernel_esp - 24)
 
-    ; Save from interrupt frame [ecx] to regs_t [ebx]
-    mov edi, [ecx + KSTK_EAX]
+    ; General regs (pusha order in frame: eax,ecx,edx,ebx,esp,ebp,esi,edi)
+    mov edi, [ecx + 28]
     mov [ebx + PROC_REGS + REGS_EAX], edi
-    mov edi, [ecx + KSTK_EBX]
-    mov [ebx + PROC_REGS + REGS_EBX], edi
-    mov edi, [ecx + KSTK_ECX]
+    mov edi, [ecx + 32]
     mov [ebx + PROC_REGS + REGS_ECX], edi
-    mov edi, [ecx + KSTK_EDX]
+    mov edi, [ecx + 36]
     mov [ebx + PROC_REGS + REGS_EDX], edi
-    mov edi, [ecx + KSTK_ESI]
-    mov [ebx + PROC_REGS + REGS_ESI], edi
-    mov edi, [ecx + KSTK_EDI]
-    mov [ebx + PROC_REGS + REGS_EDI], edi
-    mov edi, [ecx + KSTK_EBP]
+    mov edi, [ecx + 40]
+    mov [ebx + PROC_REGS + REGS_EBX], edi
+    mov edi, [ecx + 48]
     mov [ebx + PROC_REGS + REGS_EBP], edi
+    mov edi, [ecx + 52]
+    mov [ebx + PROC_REGS + REGS_ESI], edi
+    mov edi, [ecx + 56]
+    mov [ebx + PROC_REGS + REGS_EDI], edi
 
-    ; User esp (saved by CPU when entering ring 0)
-    mov edi, [ecx + KSTK_ESP]
+    ; User esp (CPU-pushed on ring transition)
+    mov edi, [ecx + 4]
     mov [ebx + PROC_REGS + REGS_ESP], edi
 
     ; EIP (where user code was when interrupted)
-    mov edi, [ecx + KSTK_EIP]
+    mov edi, [ecx + 16]
     mov [ebx + PROC_REGS + REGS_EIP], edi
 
     ; EFLAGS
-    mov edi, [ecx + KSTK_EFLAGS]
+    mov edi, [ecx + 8]
     mov [ebx + PROC_REGS + REGS_EFLAGS], edi
 
-    ; Segment registers (16-bit, stored as 32-bit in regs_t)
-    ; Only CS and SS are saved by CPU on ring transition.
-    ; DS/ES/FS/GS in interrupt frame are kernel segments (0x10), not user segments.
-    ; Preserve existing user segments from regs_t (set at process creation).
-    movzx edi, word [ecx + KSTK_CS]
+    ; CS / SS (CPU-pushed, 16-bit)
+    movzx edi, word [ecx + 12]
     mov [ebx + PROC_REGS + REGS_CS], edi
-    movzx edi, word [ecx + KSTK_SS]
+    movzx edi, word [ecx + 0]
     mov [ebx + PROC_REGS + REGS_SS], edi
 
     ; --- Load next process's registers ---
-    mov eax, [esp+4]            ; reload eax = &next->regs
+    mov eax, [esp+4]                ; eax = &next->regs
 
 .load_next:
     mov ebx, [eax + REGS_EBX]
@@ -133,11 +138,22 @@ process_context_switch:
     mov edi, [eax + REGS_EDI]
     mov ebp, [eax + REGS_EBP]
 
-    ; Set up iret frame on the kernel stack
-    mov esp, [eax + REGS_ESP]          ; user esp
-    push dword [eax + REGS_EFLAGS]     ; eflags
-    push dword [eax + REGS_CS]         ; cs
-    push dword [eax + REGS_EIP]        ; eip
+    ; Switch to next process's kernel stack and build iret frame.
+    ; kernel_esp is the top of the kernel stack; push 5 dwords below it.
+    mov esp, [eax + PROC_KERNEL_ESP - PROC_REGS]  ; esp = next->kernel_esp
+    sub esp, 20                     ; room for 5 dwords (ss,esp,eflags,cs,eip)
+
+    ; Build iret frame: [esp+0]=eip [esp+4]=cs [esp+8]=eflags [esp+12]=esp [esp+16]=ss
+    mov ebx, [eax + REGS_EIP]
+    mov [esp + 0], ebx              ; eip (user entry)
+    movzx ebx, word [eax + REGS_CS]
+    mov [esp + 4], ebx              ; cs
+    mov ebx, [eax + REGS_EFLAGS]
+    mov [esp + 8], ebx              ; eflags
+    mov ebx, [eax + REGS_ESP]
+    mov [esp + 12], ebx             ; esp (user stack)
+    movzx ebx, word [eax + REGS_SS]
+    mov [esp + 16], ebx             ; ss
 
     ; Load segment registers
     mov gs, [eax + REGS_GS]
@@ -152,26 +168,23 @@ process_context_switch:
 
 .initial_launch:
     ; No current process to save (first process being scheduled).
-    ; Set up iret frame on the kernel stack to transition to ring 3.
     ; eax = &next->regs
-
-    ; Load user entry point and user stack from regs
-    mov ecx, [eax + REGS_EIP]         ; ecx = user entry point
-    mov edx, [eax + REGS_ESP]         ; edx = user stack top
 
     ; Switch to this process's kernel stack
     mov ebx, [eax + PROC_KERNEL_ESP - PROC_REGS]  ; ebx = kernel_esp
-    lea esp, [ebx - 20]              ; make room for iret frame (5 dwords)
+    lea esp, [ebx - 20]             ; make room for iret frame (5 dwords)
 
     ; Build iret frame: [esp+0]=eip [esp+4]=cs [esp+8]=eflags [esp+12]=esp [esp+16]=ss
-    mov [esp + 0], ecx               ; eip (user entry)
-    mov dword [esp + 4], 0x1B        ; cs (user code, ring 3)
+    mov ecx, [eax + REGS_EIP]        ; ecx = user entry point
+    mov [esp + 0], ecx              ; eip (user entry)
+    mov dword [esp + 4], 0x1B       ; cs (user code, ring 3)
     pushfd
     pop ecx
-    or ecx, 0x202                    ; enable interrupts (IF=1)
-    mov [esp + 8], ecx               ; eflags
-    mov [esp + 12], edx              ; esp (user stack top)
-    mov dword [esp + 16], 0x23       ; ss (user data)
+    or ecx, 0x202                   ; enable interrupts (IF=1)
+    mov [esp + 8], ecx              ; eflags
+    mov ecx, [eax + REGS_ESP]        ; ecx = user stack top
+    mov [esp + 12], ecx             ; esp (user stack top)
+    mov dword [esp + 16], 0x23      ; ss (user data)
 
     ; Load user segment registers
     mov ax, 0x23
