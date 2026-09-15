@@ -42,6 +42,29 @@ static void enqueue_ready(process_t *proc)
     proc->state = PROC_READY;
 }
 
+/* Free all user-space page table entries and their backing frames.
+ * Does NOT touch kernel mappings (entries >= 768 in the page directory). */
+static void paging_free_user_pages(page_directory_t *dir)
+{
+    uint32 di;
+    if (!dir) return;
+
+    for (di = 0; di < 768; di++) {
+        page_entry e = dir->entries[di];
+        if (!(e & PAGE_PRESENT)) continue;
+
+        page_table_t *table = (page_table_t *)(e & ~0xFFF);
+        uint32 ti;
+        for (ti = 0; ti < 1024; ti++) {
+            if (table->entries[ti] & PAGE_PRESENT) {
+                pmm_free_frame(table->entries[ti] & ~0xFFF);
+            }
+        }
+        pmm_free_frame((uint32)table);
+        dir->entries[di] = 0;
+    }
+}
+
 int process_create(const char *name, void (*entry)(void))
 {
     process_t *proc;
@@ -95,9 +118,14 @@ int process_create(const char *name, void (*entry)(void))
     }
     memset((void *)kernel_stack, 0, PROCESS_STACK_SIZE);
 
+    proc->kernel_stack_base = kernel_stack;
     proc->kernel_esp = kernel_stack + PROCESS_STACK_SIZE;
 
-    /* Set up initial register state */
+    /* Set up initial register state.
+     * regs_t layout: eax=0 ebx=4 ecx=8 edx=12 esi=16 edi=20
+     *               ebp=24 esp=28 eip=32 eflags=36 cs=40 ss=44
+     *               ds=48 es=52 fs=56 gs=60 */
+    memset(&proc->regs, 0, sizeof(regs_t));
     proc->regs.eip = (uint32)entry;
     proc->regs.esp = user_stack + PROCESS_STACK_SIZE;
     proc->regs.ebp = user_stack + PROCESS_STACK_SIZE;
@@ -140,6 +168,17 @@ void process_exit(void)
         kfree((void *)current_proc->stack_base);
     }
 
+    /* Free kernel stack */
+    if (current_proc->kernel_stack_base) {
+        kfree((void *)current_proc->kernel_stack_base);
+    }
+
+    /* Free user page tables and frames */
+    if (current_proc->page_dir) {
+        paging_free_user_pages(current_proc->page_dir);
+        paging_free_directory(current_proc->page_dir);
+    }
+
     current_proc->state = PROC_ZOMBIE;
     current_proc = 0;
 
@@ -175,7 +214,7 @@ void process_schedule(void)
     /* Switch page directory */
     paging_switch_directory(current_proc->page_dir);
 
-    /* Set kernel stack for TSS */
+    /* Set kernel stack for TSS (used by CPU on next interrupt from ring 3) */
     tss_set_kernel_stack(current_proc->kernel_esp);
 
     /* Context switch */
@@ -238,11 +277,27 @@ int process_fork(void)
             return -1;
         }
         memset((void *)kernel_stack, 0, PROCESS_STACK_SIZE);
+        child->kernel_stack_base = kernel_stack;
         child->kernel_esp = kernel_stack + PROCESS_STACK_SIZE;
     }
 
     enqueue_ready(child);
     return child->pid;
+}
+
+int process_waitpid(int pid)
+{
+    int i;
+    for (i = 0; i < PROCESS_MAX; i++) {
+        if (process_table[i].state == PROC_ZOMBIE) {
+            if (pid == -1 || process_table[i].pid == pid) {
+                int child_pid = process_table[i].pid;
+                process_table[i].state = PROC_UNUSED;
+                return child_pid;
+            }
+        }
+    }
+    return -1;
 }
 
 int process_query_all(char *buf, int maxlen)

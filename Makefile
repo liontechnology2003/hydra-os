@@ -35,7 +35,7 @@ KERNEL_C   = kernel/kmain.o kernel/gdt.o kernel/idt.o kernel/fb.o \
              kernel/paging.o kernel/kheap.o kernel/process.o \
              kernel/pit.o kernel/syscall.o kernel/ipc.o \
              kernel/vbe.o kernel/gfx.o kernel/mouse.o kernel/splash.o \
-             kernel/rtc.o
+             kernel/rtc.o kernel/elf.o kernel/user_hello_embed.o
 LIB_C      = lib/string.o lib/lineedit.o
 LIB_CPP    = lib/cpp_runtime.o
 SERVER_C   = servers/vfs.o servers/shell.o servers/snake.o servers/system.o \

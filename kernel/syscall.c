@@ -12,6 +12,7 @@
 #include "vbe.h"
 #include "pit.h"
 #include "rtc.h"
+#include "elf.h"
 
 uint32 syscall_handler(uint32 num, uint32 a1, uint32 a2, uint32 a3, uint32 a4)
 {
@@ -27,6 +28,11 @@ uint32 syscall_handler(uint32 num, uint32 a1, uint32 a2, uint32 a3, uint32 a4)
 
     case SYS_FORK:
         return process_fork();
+
+    case SYS_EXEC: {
+        /* a1 = name, a2 = ramdisk path */
+        return (uint32)elf_load_from_ramdisk((const char *)a1, (const char *)a2);
+    }
 
     case SYS_FB_WRITE: {
         char *str = (char *)a1;
@@ -191,6 +197,9 @@ uint32 syscall_handler(uint32 num, uint32 a1, uint32 a2, uint32 a3, uint32 a4)
         /* a1 == 2: Packed time: hour<<16 | minute<<8 | second */
         return ((uint32)t.hour << 16) | ((uint32)t.minute << 8) | (uint32)t.second;
     }
+
+    case SYS_WAITPID:
+        return process_waitpid((int)a1);
 
     default:
         serial_write("SYSCALL: unknown\n", 18);

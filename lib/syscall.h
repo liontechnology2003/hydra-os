@@ -38,6 +38,7 @@ typedef struct {
 #define SYS_KBD_EVENT   20
 #define SYS_FB_MAP      21
 #define SYS_GET_TIME    22
+#define SYS_WAITPID     23
 
 /* Inline syscall wrapper */
 static inline uint32 syscall(uint32 num, uint32 a1, uint32 a2, uint32 a3, uint32 a4)

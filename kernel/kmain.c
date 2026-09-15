@@ -18,6 +18,12 @@
 #include "splash.h"
 #include "mouse.h"
 #include "rtc.h"
+#include "elf.h"
+#include "string.h"
+
+/* Embedded test ELF binary (from user_hello_embed.c) */
+extern const uint8 user_hello_elf[];
+extern const uint32 user_hello_elf_size;
 
 /* ── Test render: rounded rect + AA text ────────────────────── */
 static void gfx_test_render(void)
@@ -214,6 +220,27 @@ int kmain(unsigned int multiboot_magic, unsigned int multiboot_info_addr)
 
     /* Initialize IPC */
     ipc_init();
+
+    /* Initialize and populate ramdisk for ELF loading testing */
+    splash_stage(45, "Initializing ramdisk...", 100);
+    if (ramdisk_add_file("user_hello", user_hello_elf, user_hello_elf_size) == 0) {
+        serial_write("RAMDISK: Added user_hello ELF\n", 30);
+    } else {
+        serial_write("RAMDISK: Failed to add user_hello ELF\n", 38);
+    }
+
+    /* Test loading ELF from ramdisk */
+    splash_stage(50, "Testing ELF load...", 100);
+    int test_pid = elf_load_from_ramdisk("test_hello", "user_hello");
+    if (test_pid >= 0) {
+        serial_write("ELF: Successfully loaded user_hello, PID=", 40);
+        char pid_buf[16];
+        itoa(pid_buf, test_pid);
+        serial_write(pid_buf, strlen(pid_buf));
+        serial_write("\n", 1);
+    } else {
+        serial_write("ELF: Failed to load user_hello from ramdisk\n", 42);
+    }
 
     /* Spawn user-space servers */
     splash_stage(55, "Loading services...", 150);

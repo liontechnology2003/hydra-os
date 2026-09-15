@@ -4,6 +4,8 @@
 #include "pit.h"
 #include "syscall.h"
 #include "mouse.h"
+#include "process.h"
+#include "string.h"
 
 /* Forward declarations */
 void keyboard_handle_interrupt(unsigned char scan_code);
@@ -184,6 +186,41 @@ void interrupt_handler_main(unsigned int *regs)
         pic_acknowledge(interrupt);
     } else if (interrupt == 32) {  /* 32 = 0x20 = IRQ0 timer */
         pit_tick();
+        pic_acknowledge(interrupt);
+        /* Preemptive scheduling: yield to next process every tick */
+        if (current_proc) {
+            process_schedule();
+        }
+    } else if (interrupt == 14) {  /* Page fault */
+        uint32 fault_addr;
+        uint32 error_code = stack_ptr[13]; /* error code pushed by CPU */
+        __asm__ volatile ("mov %%cr2, %0" : "=r"(fault_addr));
+
+        serial_write("PAGE FAULT at ", 14);
+        {
+            char buf[16];
+            itoa(buf, fault_addr);
+            serial_write(buf, strlen(buf));
+        }
+        serial_write(" err=", 5);
+        {
+            char buf[16];
+            itoa(buf, error_code);
+            serial_write(buf, strlen(buf));
+        }
+        serial_write("\n", 1);
+
+        /* Kill the faulting process */
+        if (current_proc) {
+            serial_write("PAGE FAULT: killing pid=", 25);
+            {
+                char buf[8];
+                itoa(buf, current_proc->pid);
+                serial_write(buf, strlen(buf));
+            }
+            serial_write("\n", 1);
+            process_exit();
+        }
         pic_acknowledge(interrupt);
     } else if (interrupt == 44) {  /* 44 = 0x2C = IRQ12 mouse */
         mouse_handle_interrupt();
