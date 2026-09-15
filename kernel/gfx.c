@@ -205,6 +205,236 @@ void gfx_clear(uint32 color)
     gfx_fill_rect(0, 0, v->width, v->height, color);
 }
 
+/* ── Alpha blending ────────────────────────────────────────── */
+
+void gfx_alpha_blend_pixel(uint32 x, uint32 y, uint32 color, uint8 alpha)
+{
+    vbe_info_t *v = vbe_get_info();
+    if (x >= v->width || y >= v->height) return;
+    if (alpha == 0) return;
+    if (alpha == 255) {
+        lfb()[y * fb_pitch_words() + x] = color;
+        return;
+    }
+
+    uint32 dst = lfb()[y * fb_pitch_words() + x];
+    uint32 inv = 255 - alpha;
+
+    uint32 r = ((color & 0xFF) * alpha + (dst & 0xFF) * inv) / 255;
+    uint32 g = (((color >> 8) & 0xFF) * alpha + ((dst >> 8) & 0xFF) * inv) / 255;
+    uint32 b = (((color >> 16) & 0xFF) * alpha + ((dst >> 16) & 0xFF) * inv) / 255;
+
+    lfb()[y * fb_pitch_words() + x] = r | (g << 8) | (b << 16);
+}
+
+/* ── Filled rounded rectangle ──────────────────────────────── */
+
+void gfx_draw_rect_rounded(uint32 x, uint32 y, uint32 w, uint32 h, uint32 r, uint32 color)
+{
+    vbe_info_t *v = vbe_get_info();
+    uint32 pitch = fb_pitch_words();
+
+    if (x >= v->width || y >= v->height) return;
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    if (r == 0) { gfx_fill_rect(x, y, w, h, color); return; }
+
+    /* Clamp to screen */
+    uint32 end_x = x + w; if (end_x > v->width) end_x = v->width;
+    uint32 end_y = y + h; if (end_y > v->height) end_y = v->height;
+
+    uint32 cx_l = x + r;          /* center of left circles */
+    uint32 cx_r = x + w - 1 - r;  /* center of right circles */
+    uint32 cy_t = y + r;          /* center of top circles */
+    uint32 cy_b = y + h - 1 - r;  /* center of bottom circles */
+    uint32 r_sq = r * r;
+
+    uint32 py;
+    for (py = y; py < end_y; py++) {
+        uint32 *scanline = lfb() + py * pitch;
+        uint32 px;
+        for (px = x; px < end_x; px++) {
+            uint8 alpha = 255;
+
+            /* Determine if we're in a corner region */
+            int32 dx = 0, dy = 0;
+            int in_corner = 0;
+
+            if (py < cy_t && px < cx_l) {
+                /* Top-left corner */
+                dx = (int32)cx_l - (int32)px;
+                dy = (int32)cy_t - (int32)py;
+                in_corner = 1;
+            } else if (py < cy_t && px > cx_r) {
+                /* Top-right corner */
+                dx = (int32)px - (int32)cx_r;
+                dy = (int32)cy_t - (int32)py;
+                in_corner = 1;
+            } else if (py > cy_b && px < cx_l) {
+                /* Bottom-left corner */
+                dx = (int32)cx_l - (int32)px;
+                dy = (int32)py - (int32)cy_b;
+                in_corner = 1;
+            } else if (py > cy_b && px > cx_r) {
+                /* Bottom-right corner */
+                dx = (int32)px - (int32)cx_r;
+                dy = (int32)py - (int32)cy_b;
+                in_corner = 1;
+            }
+
+            if (in_corner) {
+                uint32 dist_sq = (uint32)(dx * dx + dy * dy);
+                if (dist_sq > r_sq + r) {
+                    /* Fully outside corner — skip pixel */
+                    continue;
+                } else if (dist_sq <= r_sq - r) {
+                    /* Fully inside corner — opaque */
+                    alpha = 255;
+                } else {
+                    /* Edge zone: soft 1px anti-aliased border */
+                    uint32 inner = (r > 1) ? (r - 1) * (r - 1) : 0;
+                    uint32 outer = r_sq;
+                    if (dist_sq <= inner) {
+                        alpha = 255;
+                    } else {
+                        /* Fraction: how far into the 1px soft zone (0..1) */
+                        uint32 range = outer - inner;
+                        if (range == 0) { alpha = 255; }
+                        else {
+                            uint32 pos = dist_sq - inner;
+                            uint32 a = 255 - (pos * 255 / range);
+                            if (a > 255) a = 255;
+                            alpha = (uint8)a;
+                        }
+                    }
+                }
+            }
+
+            if (alpha == 255) {
+                scanline[px] = color;
+            } else if (alpha > 0) {
+                uint32 dst = scanline[px];
+                uint32 blend_inv = 255 - alpha;
+                uint32 r_c = ((color & 0xFF) * alpha + (dst & 0xFF) * blend_inv) / 255;
+                uint32 g_c = (((color >> 8) & 0xFF) * alpha + ((dst >> 8) & 0xFF) * blend_inv) / 255;
+                uint32 b_c = (((color >> 16) & 0xFF) * alpha + ((dst >> 16) & 0xFF) * blend_inv) / 255;
+                scanline[px] = r_c | (g_c << 8) | (b_c << 16);
+            }
+        }
+    }
+
+    gfx_set_damage(x, y, w, h);
+}
+
+/* ── Anti-aliased text rendering (4x supersampling) ────────── */
+
+void gfx_put_char_aa(uint32 x, uint32 y, char c, uint32 fg, uint32 bg, uint32 scale)
+{
+    unsigned int idx = (unsigned int)c;
+    if (idx < 32 || idx > 127) idx = 32;
+    idx -= 32;
+
+    const unsigned char *glyph = font_8x16[idx];
+
+    /* For each output pixel (at scale resolution), compute coverage
+     * by supersampling the 8x16 bitmap at 4x (32x64 subpixels).
+     * Each subpixel maps to a 1-bit sample. We average the 4x4 block
+     * of subpixels that fall inside one output pixel to get alpha. */
+    uint32 gx, gy;
+    for (gy = 0; gy < 16; gy++) {
+        for (gx = 0; gx < 8; gx++) {
+            /* Count how many of the 4x4=16 subpixels are ON.
+             * A subpixel (sx, sy) in the 4x4 block maps to the
+             * nearest bitmap pixel at (gx, gy). For interior
+             * pixels (not near an edge), all 16 are the same.
+             * Near edges, some subpixels cross the boundary. */
+            uint32 on_count = 0;
+            uint32 sx, sy;
+
+            /* Get the 3x3 neighborhood of bitmap bits around (gx, gy)
+             * to determine edge coverage for each subpixel. */
+            for (sy = 0; sy < 4; sy++) {
+                for (sx = 0; sx < 4; sx++) {
+                    /* Map subpixel (sx, sy) to a fractional position
+                     * within the glyph pixel grid: (gx + sx/4, gy + sy/4) */
+                    /* Check if this subpixel's center falls on an ON bit.
+                     * For anti-aliasing, we also check neighbors weighted
+                     * by the fractional offset. */
+                    int32 fx = (int32)sx - 2; /* -2..1, offset from center */
+                    int32 fy = (int32)sy - 2;
+
+                    /* Primary bit at (gx, gy) */
+                    int on = (glyph[gy] >> (7 - gx)) & 1;
+
+                    /* If on the edge (subpixel near boundary), check if
+                     * the neighbor in that direction is also on. If the
+                     * subpixel is on the side away from the ON neighbor,
+                     * it contributes partial coverage. */
+                    if (!on) {
+                        /* Check all 4 cardinal neighbors */
+                        int has_neighbor = 0;
+                        if (gx > 0 && ((glyph[gy] >> (7 - (gx - 1))) & 1)) has_neighbor = 1;
+                        if (gx < 7 && ((glyph[gy] >> (7 - (gx + 1))) & 1)) has_neighbor = 1;
+                        if (gy > 0 && ((glyph[gy - 1] >> (7 - gx)) & 1)) has_neighbor = 1;
+                        if (gy < 15 && ((glyph[gy + 1] >> (7 - gx)) & 1)) has_neighbor = 1;
+
+                        if (has_neighbor) {
+                            /* Subpixel is at the edge of a filled region.
+                             * Determine coverage based on which side. */
+                            if (fx < 0 && gx > 0 && ((glyph[gy] >> (7 - (gx - 1))) & 1))
+                                on = 1;  /* left neighbor is on, this subpixel is on the left edge */
+                            else if (fx >= 0 && gx < 7 && ((glyph[gy] >> (7 - (gx + 1))) & 1))
+                                on = 1;  /* right neighbor is on */
+                            else if (fy < 0 && gy > 0 && ((glyph[gy - 1] >> (7 - gx)) & 1))
+                                on = 1;  /* top neighbor is on */
+                            else if (fy >= 0 && gy < 15 && ((glyph[gy + 1] >> (7 - gx)) & 1))
+                                on = 1;  /* bottom neighbor is on */
+                        }
+                    }
+
+                    on_count += on;
+                }
+            }
+
+            /* Alpha = fraction of subpixels that are on (0..16 → 0..255) */
+            uint8 alpha = (uint8)(on_count * 255 / 16);
+
+            if (alpha == 0) {
+                /* Fully background — just fill solid */
+                gfx_fill_rect(x + gx * scale, y + gy * scale, scale, scale, bg);
+            } else if (alpha == 255) {
+                /* Fully foreground — solid fill */
+                gfx_fill_rect(x + gx * scale, y + gy * scale, scale, scale, fg);
+            } else {
+                /* Blended edge — scale the output pixel */
+                uint32 sx2, sy2;
+                for (sy2 = 0; sy2 < scale; sy2++) {
+                    for (sx2 = 0; sx2 < scale; sx2++) {
+                        gfx_alpha_blend_pixel(x + gx * scale + sx2,
+                                              y + gy * scale + sy2,
+                                              fg, alpha);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void gfx_puts_aa(uint32 x, uint32 y, const char *str, uint32 fg, uint32 bg, uint32 scale)
+{
+    uint32 ox = x;
+    while (*str) {
+        if (*str == '\n') {
+            x = ox;
+            y += 16 * scale;
+        } else {
+            gfx_put_char_aa(x, y, *str, fg, bg, scale);
+            x += 8 * scale;
+        }
+        str++;
+    }
+}
+
 void gfx_put_char(uint32 x, uint32 y, char c, uint32 fg, uint32 bg, uint32 scale)
 {
     unsigned int idx = (unsigned int)c;

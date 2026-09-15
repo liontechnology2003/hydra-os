@@ -4,6 +4,7 @@
 #include "string.h"
 #include "serial.h"
 
+#define KHEAP_START     0x02000000
 #define KHEAP_END       0x08000000
 #define KHEAP_BLOCK_MIN 16
 #define KHEAP_BLOCK_MAGIC 0xDEADBEEF
@@ -17,8 +18,8 @@ typedef struct block_header {
 } block_header_t;
 
 static block_header_t *heap_head = 0;
-static uint32 heap_start = 0;
-static uint32 heap_current = 0;
+static uint32 heap_start = KHEAP_START;
+static uint32 heap_current = KHEAP_START;
 static uint32 heap_used = 0;
 static uint32 heap_free = 0;
 
@@ -46,11 +47,6 @@ static void extend_heap(uint32 size)
 
 void kheap_init(void)
 {
-    extern uint32 kernel_end;
-
-    heap_start = ((uint32)&kernel_end + 0xFFF) & ~0xFFF;
-    heap_current = heap_start;
-
     /* Extend by initial 64KB */
     extend_heap(64 * 1024);
     serial_write("KHEAP: initialized\n", 19);

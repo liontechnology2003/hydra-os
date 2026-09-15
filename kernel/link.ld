@@ -68,5 +68,16 @@ SECTIONS {
         *(.bss.*)
     }
 
+    /* Kernel stack: reserved at the very end of the kernel image so that
+     * kernel_end (defined below) extends past it and PMM reserves those
+     * frames. The stack grows DOWN from __stack_top into kernel_stack. */
+    .stack ALIGN (0x1000) (NOLOAD) :
+    {
+        __stack_start = .;
+        *(.stack*)
+        __stack_end = .;
+        __stack_top = .;
+    }
+
     kernel_end = .;
 }

@@ -14,8 +14,53 @@
 #include "cpp_runtime.h"
 #include "vbe.h"
 #include "gfx.h"
+#include "theme.h"
 #include "splash.h"
 #include "mouse.h"
+
+/* ── Test render: rounded rect + AA text ────────────────────── */
+static void gfx_test_render(void)
+{
+    uint32 scr_w = gfx_width();
+    uint32 scr_h = gfx_height();
+
+    /* Dark background */
+    gfx_clear(THEME_WIN_BG);
+
+    /* Centered rounded rect */
+    uint32 box_w = 360;
+    uint32 box_h = 120;
+    uint32 box_x = (scr_w - box_w) / 2;
+    uint32 box_y = (scr_h - box_h) / 2;
+    gfx_draw_rect_rounded(box_x, box_y, box_w, box_h, THEME_CORNER_R, THEME_TITLEBAR_ACTIVE);
+
+    /* Title bar accent strip at the top of the box */
+    gfx_draw_rect_rounded(box_x, box_y, box_w, THEME_TITLEBAR_H, THEME_CORNER_R, THEME_ACCENT);
+
+    /* Anti-aliased text inside the box */
+    const char *line1 = "RedLion OS";
+    const char *line2 = "Primitives OK";
+
+    /* Measure approximate widths (8px * scale) */
+    uint32 scale = 2;
+    uint32 l1_w = 0; { const char *p = line1; while (*p) { l1_w += 8; p++; } }
+    l1_w *= scale;
+    uint32 l2_w = 0; { const char *p = line2; while (*p) { l2_w += 8; p++; } }
+    l2_w *= scale;
+
+    gfx_puts_aa(box_x + (box_w - l1_w) / 2,
+                box_y + THEME_TITLEBAR_H + 16,
+                line1, THEME_TITLE_ACTIVE, THEME_TITLEBAR_ACTIVE, scale);
+
+    scale = 1;
+    l2_w = 0; { const char *p = line2; while (*p) { l2_w += 8; p++; } }
+    l2_w *= scale;
+    gfx_puts_aa(box_x + (box_w - l2_w) / 2,
+                box_y + THEME_TITLEBAR_H + 52,
+                line2, THEME_TEXT, THEME_TITLEBAR_ACTIVE, scale);
+
+    serial_write("GFX: test render complete\n", 26);
+}
 
 /* Server entry points (run in ring 3) */
 extern void srv_display_main(void);
@@ -188,6 +233,7 @@ int kmain(unsigned int multiboot_magic, unsigned int multiboot_info_addr)
     /* Main loop */
     if (desktop_mode) {
         splash_stage(100, "Launching window manager...", 250);
+        gfx_test_render();
         serial_write("WM: entering window manager\n", 28);
         srv_wm_main();
     }

@@ -4,7 +4,7 @@ MAGIC_NUMBER equ 0x1BADB002     ; define the magic number constant
 FLAGS        equ 0x0            ; multiboot flags (no VBE — use default text mode)
 CHECKSUM     equ -MAGIC_NUMBER  ; calculate the checksum
 
-KERNEL_STACK_SIZE equ 4096      ; size of stack in bytes
+KERNEL_STACK_SIZE equ 0x40000   ; 256 KB stack (WM compose() needs >4 KB alone)
 
 section .text                   ; start of the text (code) section
 align 4                         ; the code must be 4 byte aligned
@@ -13,7 +13,8 @@ align 4                         ; the code must be 4 byte aligned
     dd CHECKSUM                 ; and the checksum
 
 loader:                         ; the loader label (defined as entry point in linker script)
-    mov esp, kernel_stack + KERNEL_STACK_SIZE   ; point esp to the start of the stack
+    extern __stack_top
+    mov esp, __stack_top        ; point esp to the top of the kernel stack
 
     extern kmain
     push ebx                    ; multiboot info pointer
@@ -23,7 +24,6 @@ loader:                         ; the loader label (defined as entry point in li
 .loop:
     jmp .loop                   ; loop forever
 
-section .bss
-align 4                         ; align at 4 bytes
-kernel_stack:                   ; label points to beginning of memory
+section .stack nobits align=16
+kernel_stack:
     resb KERNEL_STACK_SIZE      ; reserve stack for the kernel

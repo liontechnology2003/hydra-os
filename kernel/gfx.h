@@ -30,6 +30,14 @@ void gfx_fill_rect(uint32 x, uint32 y, uint32 w, uint32 h, uint32 color);
 void gfx_draw_rect(uint32 x, uint32 y, uint32 w, uint32 h, uint32 color);
 void gfx_draw_hline(uint32 x, uint32 y, uint32 w, uint32 color);
 void gfx_draw_vline(uint32 x, uint32 y, uint32 h, uint32 color);
+void gfx_draw_rect_rounded(uint32 x, uint32 y, uint32 w, uint32 h, uint32 r, uint32 color);
+
+/* Alpha blending */
+void gfx_alpha_blend_pixel(uint32 x, uint32 y, uint32 color, uint8 alpha);
+
+/* Anti-aliased text rendering (4x supersampled) */
+void gfx_put_char_aa(uint32 x, uint32 y, char c, uint32 fg, uint32 bg, uint32 scale);
+void gfx_puts_aa(uint32 x, uint32 y, const char *str, uint32 fg, uint32 bg, uint32 scale);
 
 /* Clear screen */
 void gfx_clear(uint32 color);

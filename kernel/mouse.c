@@ -83,11 +83,17 @@ static void mouse_process_packet(unsigned char b0, unsigned char b1, unsigned ch
 {
     mouse_buttons = b0 & 0x07;
     {
-        signed char dx = (signed char)b1;
-        signed char dy = -(signed char)b2;  /* Invert Y: screen Y goes down */
+        /* PS/2 deltas are 9-bit signed: 8 bits in b1/b2, sign from b0 bits 4/5.
+         * Without sign extension, large negative deltas wrap incorrectly
+         * (e.g. -1 truncated to 8-bit stays -1, but -256 truncated becomes 0). */
+        int dx = (int)b1;
+        if (b0 & 0x10) dx |= ~0xFF;          /* sign-extend X from 9 bits */
+        int dy = (int)b2;
+        if (b0 & 0x20) dy |= ~0xFF;          /* sign-extend Y from 9 bits */
+        dy = -dy;                             /* invert Y: screen Y goes down */
 
-        mouse_x = dx;
-        mouse_y = dy;
+        mouse_x = (signed char)(dx & 0xFF);
+        mouse_y = (signed char)(dy & 0xFF);
 
         /* Update absolute position */
         abs_x += dx;
@@ -212,7 +218,9 @@ void mouse_init(void)
 
     /* Enable data reporting */
     mouse_write(MOUSE_CMD_ENABLE);
-    (void)mouse_read(); /* ACK */
+    if (mouse_read() != 0xFA) {
+        /* ACK not received — mouse may not be present or responsive. */
+    }
 
     /* Drain any residual bytes queued during init (e.g. the 0xAA
      * self-test result that follows the RESET ACK) so the first IRQ
@@ -235,6 +243,13 @@ void mouse_handle_interrupt(void)
 {
     unsigned char packet = inb(PS2_DATA_PORT);
     unsigned char last_byte = mouse_intelli ? 3 : 2;
+
+    /* Verify sync bit: byte 0 must have bit 3 set. If not, we
+     * lost alignment (e.g. due to a missed IRQ or noise). Discard
+     * and wait for the next byte that looks like a valid header. */
+    if (mouse_cycle == 0 && (packet & 0x08) == 0) {
+        return;
+    }
 
     if (mouse_cycle < last_byte) {
         packet_buf[mouse_cycle] = packet;

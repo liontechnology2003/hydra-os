@@ -59,6 +59,7 @@ void pic_acknowledge(unsigned int interrupt)
     else
     {
         outb(PIC2_PORT_A, PIC_ACK);
+        outb(PIC1_PORT_A, PIC_ACK);
     }
 }
 
