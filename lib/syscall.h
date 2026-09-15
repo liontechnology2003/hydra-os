@@ -37,6 +37,7 @@ typedef struct {
 #define SYS_MOUSE_GET   19
 #define SYS_KBD_EVENT   20
 #define SYS_FB_MAP      21
+#define SYS_GET_TIME    22
 
 /* Inline syscall wrapper */
 static inline uint32 syscall(uint32 num, uint32 a1, uint32 a2, uint32 a3, uint32 a4)
@@ -63,7 +64,10 @@ static inline int  sys_ipc_receive(uint32 src, uipc_msg_t *msg) { return (int)sy
 static inline int  sys_register_svc(const char *name, uint32 port) { return (int)syscall(SYS_REGISTER_SVC, (uint32)name, port, sys_getpid(), 0); }
 static inline void sys_reboot(void)    { syscall(SYS_REBOOT, 0, 0, 0, 0); }
 static inline void sys_shutdown(void)  { syscall(SYS_SHUTDOWN, 0, 0, 0, 0); }
-static inline uint32 sys_uptime(void)  { return syscall(SYS_UPTIME, 0, 0, 0, 0); }
+static inline uint32 sys_uptime(void) { return syscall(SYS_UPTIME, 0, 0, 0, 0); }
+static inline uint32 sys_get_time_ms(void) { return syscall(SYS_GET_TIME, 0, 0, 0, 0); }
+/* a1=1: packed date (month<<24|day<<16|year), a1=2: packed time (hour<<16|min<<8|sec) */
+static inline uint32 sys_get_time(int what) { return syscall(SYS_GET_TIME, (uint32)what, 0, 0, 0); }
 static inline uint32 *sys_fb_get_buffer(void) { return (uint32 *)syscall(SYS_FB_MAP, 0, 0, 0, 0); }
 static inline void sys_fb_release_buffer(uint32 ptr) { (void)ptr; }
 static inline void sys_fb_flush(void)  { syscall(SYS_FB_FLUSH, 0, 0, 0, 0); }

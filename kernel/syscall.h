@@ -26,6 +26,7 @@
 #define SYS_MOUSE_GET   19
 #define SYS_KBD_EVENT   20
 #define SYS_FB_MAP      21
+#define SYS_GET_TIME    22
 
 /* IPC message structure */
 #define IPC_MSG_MAX 128

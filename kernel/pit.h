@@ -11,5 +11,6 @@ void pit_set_tick_rate(uint32 hz);
 uint32 pit_get_ticks(void);
 void pit_tick(void);
 uint32 pit_get_seconds(void);
+uint32 pit_get_ms(void);
 
 #endif /* KERNEL_PIT_H */

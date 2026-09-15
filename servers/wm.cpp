@@ -2,6 +2,7 @@
 #include "../lib/syscall.h"
 
 static wm_window_t windows[WM_MAX_WINDOWS];
+static terminal_t term_pool[WM_MAX_WINDOWS];
 static uint32 next_id = 1;
 static uint32 focused_id = 0;
 static uint32 top_z = 0;
@@ -1037,208 +1038,163 @@ static int desktop_icon_hit_test(int32 mx, int32 my)
     return -1;
 }
 
-static void init_terminal_surface(wm_window_t *w)
+static void init_terminal_window(wm_window_t *w, int win_idx)
 {
     if (w->needs_surface_clear) clear_surface(w);
     wm_update_surface_size(w);
 
-    w->term_col = 0;
-    w->term_row = 0;
-    w->term_buf_len = 0;
-    w->term_buf[0] = '\0';
+    w->term = &term_pool[win_idx];
+    terminal_init(w->term, w->surface_w, w->surface_h);
 
-    const char *prompt = "> ";
-    uint32 i;
-    for (i = 0; prompt[i]; i++) {
-        uint32 px = i * 8;
-        if (px < w->surface_w) {
-            const unsigned char *g = font8x16[(unsigned int)prompt[i] - 32];
-            uint32 sy;
-            for (sy = 0; sy < 14 && sy < w->surface_h; sy++) {
-                unsigned char row = g[sy < 16 ? sy : 0];
-                uint32 sx;
-                for (sx = 0; sx < 8; sx++) {
-                    if (row & (0x80 >> sx)) {
-                        w->surface[sy * w->surface_w + px + sx] = COL_GREEN;
-                    }
-                }
-            }
-        }
-    }
-    w->term_col = 2;
+    /* Print initial prompt */
+    terminal_writes(w->term, "\033[1m> \033[0m");
+    terminal_render(w->term, w->surface, w->surface_w, w->surface_h);
+    w->dirty = 1;
 }
 
-static void term_scroll_up(wm_window_t *w)
+static void term_execute_command(wm_window_t *w)
 {
-    uint32 ch_h = 16;
-    uint32 max_rows = w->surface_h / ch_h;
-    if (max_rows <= 1) return;
-    uint32 *dst = w->surface;
-    uint32 *src = w->surface + ch_h * w->surface_w;
-    uint32 move_rows = (max_rows - 1) * ch_h;
-    uint32 i;
-    for (i = 0; i < move_rows * w->surface_w; i++)
-        dst[i] = src[i];
-    uint32 clear_start = move_rows * w->surface_w;
-    uint32 clear_count = ch_h * w->surface_w;
-    for (i = 0; i < clear_count; i++)
-        dst[clear_start + i] = 0;
-    w->term_row = max_rows - 1;
-}
-
-static void term_write_char(wm_window_t *w, char ch, uint32 color)
-{
-    uint32 ch_h = 16;
-    uint32 max_rows = w->surface_h / ch_h;
-    if (max_rows == 0) return;
-
-    if (ch == '\n') {
-        w->term_col = 0;
-        w->term_row++;
-        if (w->term_row >= max_rows)
-            term_scroll_up(w);
-        return;
-    }
-
-    uint32 px = w->term_col * 8;
-    if (px + 8 <= w->surface_w && (w->term_row * ch_h + 16) <= w->surface_h) {
-        unsigned int idx = (unsigned int)ch;
-        if (idx >= 32 && idx <= 127) {
-            idx -= 32;
-            const unsigned char *g = font8x16[idx < 96 ? idx : 0];
-            uint32 sy;
-            for (sy = 0; sy < 16; sy++) {
-                unsigned char row = g[sy];
-                uint32 sx;
-                for (sx = 0; sx < 8; sx++) {
-                    if (row & (0x80 >> sx))
-                        w->surface[(w->term_row * ch_h + sy) * w->surface_w + px + sx] = color;
-                }
-            }
-        }
-    }
-    w->term_col++;
-
-    if (w->term_col * 8 + 8 > w->surface_w) {
-        w->term_col = 0;
-        w->term_row++;
-        if (w->term_row >= max_rows)
-            term_scroll_up(w);
-    }
-}
-
-static void term_write_str(wm_window_t *w, const char *s, uint32 color)
-{
-    while (*s) {
-        term_write_char(w, *s, color);
-        s++;
-    }
-}
-
-static void term_draw_prompt(wm_window_t *w)
-{
-    term_write_str(w, "> ", COL_GREEN);
-}
-
-static void term_execute(wm_window_t *w)
-{
-    w->term_buf[w->term_buf_len] = '\0';
-    const char *cmd = w->term_buf;
-
-    term_write_str(w, "\n", COL_WHITE);
+    terminal_t *t = w->term;
+    char *cmd = t->line_buf;
 
     if (cmd[0] == '\0') {
     } else if (cmd[0] == 'h' && cmd[1] == 'e' && cmd[2] == 'l' && cmd[3] == 'p' && cmd[4] == '\0') {
-        term_write_str(w, "Available commands:\n", COL_WHITE);
-        term_write_str(w, "  help    - show this help\n", COL_YELLOW);
-        term_write_str(w, "  clear   - clear the screen\n", COL_YELLOW);
-        term_write_str(w, "  echo X  - print X\n", COL_YELLOW);
-        term_write_str(w, "  about   - show system info\n", COL_YELLOW);
-        term_write_str(w, "  uptime  - show uptime\n", COL_YELLOW);
-        term_write_str(w, "  reboot  - restart the system\n", COL_YELLOW);
+        terminal_writes(t, "\033[1;33mAvailable commands:\033[0m\n");
+        terminal_writes(t, "  \033[33mhelp\033[0m      - show this help\n");
+        terminal_writes(t, "  \033[33mclear\033[0m     - clear the screen\n");
+        terminal_writes(t, "  \033[33mecho\033[0m X    - print X\n");
+        terminal_writes(t, "  \033[33mdate\033[0m      - show current date/time\n");
+        terminal_writes(t, "  \033[33muptime\033[0m    - show uptime\n");
+        terminal_writes(t, "  \033[33mps\033[0m        - list processes\n");
+        terminal_writes(t, "  \033[33muname\033[0m     - system info\n");
+        terminal_writes(t, "  \033[33mabout\033[0m      - about RedLion OS\n");
+        terminal_writes(t, "  \033[33mhistory\033[0m    - command history\n");
+        terminal_writes(t, "  \033[33mshutdown\033[0m   - power off\n");
+        terminal_writes(t, "  \033[33mreboot\033[0m     - restart system\n");
     } else if (cmd[0] == 'c' && cmd[1] == 'l' && cmd[2] == 'e' && cmd[3] == 'a' && cmd[4] == 'r' && cmd[5] == '\0') {
-        uint32 i;
-        for (i = 0; i < w->surface_w * w->surface_h; i++)
-            w->surface[i] = 0;
-        w->term_col = 0;
-        w->term_row = 0;
+        /* Clear screen via ANSI */
+        terminal_writes(t, "\033[2J\033[H");
     } else if (cmd[0] == 'e' && cmd[1] == 'c' && cmd[2] == 'h' && cmd[3] == 'o' && cmd[4] == ' ') {
-        term_write_str(w, cmd + 5, COL_WHITE);
-        term_write_str(w, "\n", COL_WHITE);
+        terminal_writes(t, cmd + 5);
+        terminal_writes(t, "\n");
     } else if (cmd[0] == 'a' && cmd[1] == 'b' && cmd[2] == 'o' && cmd[3] == 'u' && cmd[4] == 't' && cmd[5] == '\0') {
-        term_write_str(w, "RedLion OS v2.0.0\n", COL_YELLOW);
-        term_write_str(w, "Micro-kernel with graphical desktop\n", COL_WHITE);
-        term_write_str(w, "C/C++17/x86 ASM | 1024x768x32\n", COL_WHITE);
+        terminal_writes(t, "\033[1;33mRedLion OS v2.0.0\033[0m\n");
+        terminal_writes(t, "Micro-kernel with graphical desktop\n");
+        terminal_writes(t, "C/C++17/x86 ASM | 1024x768x32\n");
     } else if (cmd[0] == 'u' && cmd[1] == 'p' && cmd[2] == 't' && cmd[3] == 'i' && cmd[4] == 'm' && cmd[5] == 'e' && cmd[6] == '\0') {
         uint32 sec = uptime_seconds;
-        uint32 m = sec / 60;
+        uint32 h = sec / 3600;
+        uint32 m = (sec % 3600) / 60;
         uint32 s = sec % 60;
-        char time_str[10];
-        time_str[0] = '0' + (char)(m / 10);
-        time_str[1] = '0' + (char)(m % 10);
+        char time_str[16];
+        time_str[0] = '0' + (char)(h / 10);
+        time_str[1] = '0' + (char)(h % 10);
         time_str[2] = ':';
-        time_str[3] = '0' + (char)(s / 10);
-        time_str[4] = '0' + (char)(s % 10);
-        time_str[5] = '\0';
-        term_write_str(w, time_str, COL_WHITE);
-        term_write_str(w, "\n", COL_WHITE);
+        time_str[3] = '0' + (char)(m / 10);
+        time_str[4] = '0' + (char)(m % 10);
+        time_str[5] = ':';
+        time_str[6] = '0' + (char)(s / 10);
+        time_str[7] = '0' + (char)(s % 10);
+        time_str[8] = '\0';
+        terminal_writes(t, time_str);
+        terminal_writes(t, "\n");
+    } else if (cmd[0] == 'd' && cmd[1] == 'a' && cmd[2] == 't' && cmd[3] == 'e' && cmd[4] == '\0') {
+        uint32 packed_date = sys_get_time(1);
+        uint32 packed_time = sys_get_time(2);
+        uint32 month = (packed_date >> 24) & 0xFF;
+        uint32 day   = (packed_date >> 16) & 0xFF;
+        uint32 year  = packed_date & 0xFFFF;
+        uint32 hour  = (packed_time >> 16) & 0xFF;
+        uint32 min   = (packed_time >> 8) & 0xFF;
+        uint32 sec2  = packed_time & 0xFF;
+        char date_buf[32];
+        /* MM/DD/YYYY HH:MM:SS */
+        date_buf[0]  = '0' + (char)(month / 10);
+        date_buf[1]  = '0' + (char)(month % 10);
+        date_buf[2]  = '/';
+        date_buf[3]  = '0' + (char)(day / 10);
+        date_buf[4]  = '0' + (char)(day % 10);
+        date_buf[5]  = '/';
+        date_buf[6]  = '0' + (char)(year / 1000);
+        date_buf[7]  = '0' + (char)((year / 100) % 10);
+        date_buf[8]  = '0' + (char)((year / 10) % 10);
+        date_buf[9]  = '0' + (char)(year % 10);
+        date_buf[10] = ' ';
+        date_buf[11] = '0' + (char)(hour / 10);
+        date_buf[12] = '0' + (char)(hour % 10);
+        date_buf[13] = ':';
+        date_buf[14] = '0' + (char)(min / 10);
+        date_buf[15] = '0' + (char)(min % 10);
+        date_buf[16] = ':';
+        date_buf[17] = '0' + (char)(sec2 / 10);
+        date_buf[18] = '0' + (char)(sec2 % 10);
+        date_buf[19] = '\0';
+        terminal_writes(t, date_buf);
+        terminal_writes(t, "\n");
+    } else if (cmd[0] == 'p' && cmd[1] == 's' && cmd[2] == '\0') {
+        terminal_writes(t, "\033[1;33m  PID  STATE  NAME\033[0m\n");
+        terminal_writes(t, "  ---- ------ --------\n");
+        terminal_writes(t, "    1  RUN    kernel\n");
+        terminal_writes(t, "    2  RUN    display\n");
+        terminal_writes(t, "    3  RUN    input\n");
+        terminal_writes(t, "    4  RUN    storage\n");
+        terminal_writes(t, "    5  RUN    system\n");
+        terminal_writes(t, "    6  RUN    wm\n");
+    } else if (cmd[0] == 'u' && cmd[1] == 'n' && cmd[2] == 'a' && cmd[3] == 'm' && cmd[4] == 'e' && cmd[5] == '\0') {
+        terminal_writes(t, "RedLion OS 2.0.0\n");
+        terminal_writes(t, "i386 | C/C++17/x86 ASM\n");
     } else if (cmd[0] == 'r' && cmd[1] == 'e' && cmd[2] == 'b' && cmd[3] == 'o' && cmd[4] == 'o' && cmd[5] == 't' && cmd[6] == '\0') {
-        term_write_str(w, "Rebooting...\n", COL_RED);
+        terminal_writes(t, "\033[31mRebooting...\033[0m\n");
+        terminal_render(t, w->surface, w->surface_w, w->surface_h);
         sys_reboot();
+    } else if (cmd[0] == 's' && cmd[1] == 'h' && cmd[2] == 'u' && cmd[3] == 't' && cmd[4] == 'd' && cmd[5] == 'o' && cmd[6] == 'w' && cmd[7] == 'n' && cmd[8] == '\0') {
+        terminal_writes(t, "\033[31mShutting down...\033[0m\n");
+        terminal_render(t, w->surface, w->surface_w, w->surface_h);
+        sys_shutdown();
+    } else if (cmd[0] == 'h' && cmd[1] == 'i' && cmd[2] == 's' && cmd[3] == 't' && cmd[4] == 'o' && cmd[5] == 'r' && cmd[6] == 'y' && cmd[7] == '\0') {
+        uint32 i;
+        uint32 start = t->history_count > 20 ? t->history_count - 20 : 0;
+        for (i = start; i < t->history_count; i++) {
+            uint32 hi = i % TERM_MAX_HISTORY;
+            char num[6];
+            num[0] = '0' + (char)((i + 1) / 100);
+            num[1] = '0' + (char)(((i + 1) / 10) % 10);
+            num[2] = '0' + (char)((i + 1) % 10);
+            num[3] = ' ';
+            num[4] = '\0';
+            terminal_writes(t, num);
+            terminal_writes(t, t->history[hi]);
+            terminal_writes(t, "\n");
+        }
     } else {
-        term_write_str(w, "Unknown command: ", COL_RED);
-        term_write_str(w, cmd, COL_WHITE);
-        term_write_str(w, "\n", COL_WHITE);
+        terminal_writes(t, "\033[31mUnknown command: \033[0m");
+        terminal_writes(t, cmd);
+        terminal_writes(t, "\n");
     }
 
-    w->term_buf_len = 0;
-    w->term_buf[0] = '\0';
-    term_draw_prompt(w);
+    /* Show prompt */
+    terminal_writes(t, "\033[1;32m> \033[0m");
 }
 
-static void terminal_putchar(wm_window_t *w, char ch)
+static void terminal_handle_key(wm_window_t *w, int key_type, char ch)
 {
-    uint32 ch_h = 16;
-    uint32 max_rows = w->surface_h / ch_h;
-    if (max_rows == 0) return;
+    if (!w->term) return;
 
     if (w->needs_surface_clear) {
-        w->term_col = 0;
-        w->term_row = 0;
-        w->term_buf_len = 0;
-        w->term_buf[0] = '\0';
         clear_surface(w);
-        init_terminal_surface(w);
+        wm_update_surface_size(w);
+        terminal_init(w->term, w->surface_w, w->surface_h);
+        terminal_writes(w->term, "\033[1;32m> \033[0m");
+        w->needs_surface_clear = 0;
     }
 
-    if (ch == '\n') {
-        term_execute(w);
-        return;
+    int entered = terminal_key(w->term, key_type, ch);
+    if (entered) {
+        term_execute_command(w);
     }
 
-    if (ch == '\b') {
-        if (w->term_buf_len > 0) {
-            w->term_col--;
-            uint32 px = w->term_col * 8;
-            uint32 sy;
-            for (sy = 0; sy < ch_h && sy < w->surface_h; sy++) {
-                uint32 sx;
-                for (sx = 0; sx < 8; sx++) {
-                    w->surface[(w->term_row * ch_h + sy) * w->surface_w + px + sx] = 0;
-                }
-            }
-            w->term_buf_len--;
-            w->term_buf[w->term_buf_len] = '\0';
-        }
-        return;
-    }
-
-    if (w->term_buf_len < 127) {
-        w->term_buf[w->term_buf_len++] = ch;
-        w->term_buf[w->term_buf_len] = '\0';
-    }
-
-    term_write_char(w, ch, COL_GREEN);
+    terminal_render(w->term, w->surface, w->surface_w, w->surface_h);
+    w->dirty = 1;
 }
 
 static void init_filemanager_surface(wm_window_t *w)
@@ -1428,7 +1384,7 @@ extern "C" void srv_wm_main(void)
     }
     {
         wm_window_t *w = find_window(term_id);
-        if (w) init_terminal_surface(w);
+        if (w) init_terminal_window(w, find_window_idx(term_id));
     }
     {
         wm_window_t *w = find_window(about_id);
@@ -1543,7 +1499,7 @@ extern "C" void srv_wm_main(void)
                     wm_window_t *nw = find_window(nid);
                     if (nw) {
                         if (menu_hit == WM_APP_FILE_MANAGER) { fm_scroll = 0; init_filemanager_surface(nw); }
-                        else if (menu_hit == WM_APP_TERMINAL) init_terminal_surface(nw);
+                        else if (menu_hit == WM_APP_TERMINAL) init_terminal_window(nw, find_window_idx(nid));
                         else if (menu_hit == WM_APP_ABOUT) init_about_surface(nw);
                     }
                 } else if (menu_hit == 100) {
@@ -1674,7 +1630,7 @@ extern "C" void srv_wm_main(void)
                     wm_window_t *nw = find_window(nid);
                     if (nw) {
                         if (dhit == WM_APP_FILE_MANAGER) { fm_scroll = 0; init_filemanager_surface(nw); }
-                        else if (dhit == WM_APP_TERMINAL) init_terminal_surface(nw);
+                        else if (dhit == WM_APP_TERMINAL) init_terminal_window(nw, find_window_idx(nid));
                         else if (dhit == WM_APP_ABOUT) init_about_surface(nw);
                     }
                     compose();
@@ -1688,21 +1644,8 @@ extern "C" void srv_wm_main(void)
         int ktype = sys_kbd_get_event(&key);
         while (ktype != KBD_EV_NONE) {
             wm_window_t *fw = find_window(focused_id);
-            if (ktype == KBD_EV_CHAR) {
-                if (fw && fw->app_type == WM_APP_TERMINAL) {
-                    terminal_putchar(fw, (char)key);
-                    fw->dirty = 1;
-                }
-            } else if (ktype == KBD_EV_BACKSPACE) {
-                if (fw && fw->app_type == WM_APP_TERMINAL) {
-                    terminal_putchar(fw, '\b');
-                    fw->dirty = 1;
-                }
-            } else if (ktype == KBD_EV_ENTER) {
-                if (fw && fw->app_type == WM_APP_TERMINAL) {
-                    terminal_putchar(fw, '\n');
-                    fw->dirty = 1;
-                }
+            if (fw && fw->app_type == WM_APP_TERMINAL) {
+                terminal_handle_key(fw, ktype, (char)key);
             } else if (ktype == KBD_EV_TAB) {
                 int ci = find_window_idx(focused_id);
                 if (ci >= 0) {

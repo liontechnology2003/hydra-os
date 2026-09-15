@@ -31,3 +31,8 @@ uint32 pit_get_seconds(void)
 {
     return pit_ticks / PIT_TICK_RATE;
 }
+
+uint32 pit_get_ms(void)
+{
+    return pit_ticks * (1000 / PIT_TICK_RATE);
+}

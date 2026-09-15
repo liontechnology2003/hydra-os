@@ -17,6 +17,7 @@
 #include "theme.h"
 #include "splash.h"
 #include "mouse.h"
+#include "rtc.h"
 
 /* ── Test render: rounded rect + AA text ────────────────────── */
 static void gfx_test_render(void)

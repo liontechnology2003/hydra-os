@@ -34,12 +34,13 @@ KERNEL_C   = kernel/kmain.o kernel/gdt.o kernel/idt.o kernel/fb.o \
              kernel/serial.o kernel/keyboard.o kernel/pmm.o \
              kernel/paging.o kernel/kheap.o kernel/process.o \
              kernel/pit.o kernel/syscall.o kernel/ipc.o \
-             kernel/vbe.o kernel/gfx.o kernel/mouse.o kernel/splash.o
+             kernel/vbe.o kernel/gfx.o kernel/mouse.o kernel/splash.o \
+             kernel/rtc.o
 LIB_C      = lib/string.o lib/lineedit.o
 LIB_CPP    = lib/cpp_runtime.o
 SERVER_C   = servers/vfs.o servers/shell.o servers/snake.o servers/system.o \
              servers/display.o servers/input.o servers/storage.o servers/system_srv.o
-SERVER_CPP = servers/wm.o
+SERVER_CPP = servers/wm.o servers/terminal.o
 
 OBJECTS = $(KERNEL_ASM) $(KERNEL_C) $(LIB_C) $(LIB_CPP) $(SERVER_C) $(SERVER_CPP)
 
@@ -94,6 +95,9 @@ servers/%.o: servers/%.c
 # --- C++ rules ---
 lib/%.o: lib/%.cpp
 	$(CXX) $(CXXFLAGS) $< -o $@
+
+servers/%.o: servers/%.c
+	$(CC) $(CFLAGS) $< -o $@
 
 servers/%.o: servers/%.cpp
 	$(CXX) $(CXXFLAGS) $< -o $@

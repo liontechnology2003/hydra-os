@@ -10,6 +10,8 @@
 #include "gfx.h"
 #include "mouse.h"
 #include "vbe.h"
+#include "pit.h"
+#include "rtc.h"
 
 uint32 syscall_handler(uint32 num, uint32 a1, uint32 a2, uint32 a3, uint32 a4)
 {
@@ -172,6 +174,22 @@ uint32 syscall_handler(uint32 num, uint32 a1, uint32 a2, uint32 a3, uint32 a4)
         }
 
         return user_lfb;
+    }
+
+    case SYS_GET_TIME: {
+        if (a1 == 0) {
+            /* Uptime in milliseconds */
+            return pit_get_ms();
+        }
+        /* Wall-clock time from RTC */
+        rtc_time_t t;
+        rtc_read(&t);
+        if (a1 == 1) {
+            /* Packed date: month<<24 | day<<16 | year */
+            return ((uint32)t.month << 24) | ((uint32)t.day << 16) | (uint32)t.year;
+        }
+        /* a1 == 2: Packed time: hour<<16 | minute<<8 | second */
+        return ((uint32)t.hour << 16) | ((uint32)t.minute << 8) | (uint32)t.second;
     }
 
     default:

@@ -2,6 +2,7 @@
 #define SERVERS_WM_H
 
 #include "types.h"
+#include "terminal.h"
 
 #define WM_MAX_WINDOWS    16
 #define WM_MAX_TITLE      64
@@ -54,9 +55,7 @@ typedef struct {
     uint8  dirty;
     uint8  app_type;
     uint8  needs_surface_clear;
-    uint32 term_col, term_row;
-    char   term_buf[128];
-    uint32 term_buf_len;
+    terminal_t *term;  /* non-NULL for terminal windows */
 } wm_window_t;
 
 #ifdef __cplusplus
