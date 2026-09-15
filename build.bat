@@ -5,7 +5,7 @@ set BUILD_DIR=%~dp0
 set QEMU=C:\msys64\mingw64\bin\qemu-system-i386.exe
 
 echo ==========================================
-echo  Hydra OS - Build and Run
+echo  RedLion OS - Build and Run
 echo ==========================================
 
 :: Build the ISO using the MSYS2 toolchain (clang + lld + xorriso)
@@ -26,7 +26,7 @@ if not exist "%QEMU%" (
     exit /b 1
 )
 
-"%QEMU%" -cdrom "%BUILD_DIR%redlion.iso" -m 128 -display sdl -no-reboot
+"%QEMU%" -cdrom "%BUILD_DIR%redlion.iso" -m 128 -vga std -serial stdio -display sdl -no-reboot
 
 echo.
 echo Done.

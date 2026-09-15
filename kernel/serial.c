@@ -84,7 +84,7 @@ int serial_is_transmit_fifo_empty(unsigned int com)
  *  @param len  The length of the buffer
  *  @return     The number of bytes written
  */
-int serial_write(char *buf, unsigned int len)
+int serial_write(const char *buf, unsigned int len)
 {
     unsigned int i;
     for (i = 0; i < len; i++) {
@@ -92,4 +92,50 @@ int serial_write(char *buf, unsigned int len)
         outb(SERIAL_DATA_PORT(SERIAL_COM1_BASE), buf[i]);
     }
     return len;
+}
+
+void serial_write_int_dec(int val)
+{
+    char buf[16];
+    int i = 0;
+    unsigned int uval;
+
+    if (val < 0) {
+        serial_write("-", 1);
+        uval = (unsigned int)(-(val + 1)) + 1;
+    } else {
+        uval = (unsigned int)val;
+    }
+
+    if (uval == 0) {
+        serial_write("0", 1);
+        return;
+    }
+
+    while (uval > 0) {
+        buf[i++] = '0' + (uval % 10);
+        uval /= 10;
+    }
+
+    int j;
+    for (j = i - 1; j >= 0; j--) {
+        serial_write(&buf[j], 1);
+    }
+}
+
+void serial_write_hex(uint32 val)
+{
+    const char hex[] = "0123456789abcdef";
+    int i;
+    int started = 0;
+
+    serial_write("0x", 2);
+
+    for (i = 28; i >= 0; i -= 4) {
+        unsigned char nibble = (val >> i) & 0xF;
+        if (nibble != 0 || started || i == 0) {
+            serial_write(&hex[nibble], 1);
+            started = 1;
+        }
+    }
 }

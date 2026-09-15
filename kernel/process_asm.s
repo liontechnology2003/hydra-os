@@ -1,4 +1,4 @@
-; process_asm.s - Context switch and user-mode entry for Hydra OS
+; process_asm.s - Context switch and user-mode entry for RedLion OS
 ; Assemble with: nasm -f elf process_asm.s
 
 global process_context_switch
@@ -55,5 +55,5 @@ switch_to_user_mode:
     or eax, 0x202           ; enable interrupts (IF=1)
     push eax
     push dword 0x1B         ; cs (user code segment, ring 3)
-    push dword [esp+4+4]    ; entry point (adjusted for pushes)
+    push dword [esp+20]     ; entry point (4 dwords pushed above = 16 bytes)
     iretd

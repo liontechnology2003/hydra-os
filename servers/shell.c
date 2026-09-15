@@ -8,6 +8,8 @@
 #include "system.h"
 #include "process.h"
 #include "ipc.h"
+#include "pit.h"
+#include "io.h"
 
 /* =========================================================
  *  Stream abstraction (stdout redirection)
@@ -297,36 +299,55 @@ static int is_operator(const char *tok)
 static int builtin_help(char **argv, int argc)
 {
     (void)argc; (void)argv;
-    shell_puts("Available commands:\n");
-    shell_puts("  help              Display this help message\n");
-    shell_puts("  clear             Clear the screen\n");
-    shell_puts("  echo              Print arguments (-n: no newline)\n");
-    shell_puts("  about             Display OS information\n");
-    shell_puts("  play              Play Snake game\n");
-    shell_puts("  pwd               Print working directory\n");
-    shell_puts("  ls [-l] [path]    List directory contents\n");
-    shell_puts("  cd [path]         Change directory\n");
-    shell_puts("  mkdir <name>      Create a directory\n");
-    shell_puts("  touch <name>      Create an empty file\n");
-    shell_puts("  rm <name>         Remove a file or empty directory\n");
-    shell_puts("  cat <file>        Print file contents (or stdin)\n");
-    shell_puts("  uname [-a]        Print system information\n");
-    shell_puts("  hostname [name]   Print or set hostname\n");
-    shell_puts("  whoami            Print current user\n");
-    shell_puts("  version           Print version information\n");
-    shell_puts("  taskmgr           Show process manager\n");
-    shell_puts("  ps                List running processes\n");
-    shell_puts("  services          Show registered micro-kernel services\n");
-    shell_puts("  sysinfo           Show PC and OS configuration\n");
-    shell_puts("  free              Show RAM information\n");
-    shell_puts("  edits             Show edited-file memory\n");
-    shell_puts("  history           Print command history\n");
-    shell_puts("  env               Print environment variables\n");
-    shell_puts("  export NAME=val   Set an environment variable\n");
-    shell_puts("  unset NAME        Remove an environment variable\n");
+
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("RedLion OS Shell - Available Commands\n");
+    fb_set_color(FB_WHITE, FB_BLACK);
+
     shell_puts("\n");
-    shell_puts("Operators: ; && || | > >>\n");
-    shell_puts("Scripting: if/then/else/fi  while/do/done  for/in/do/done\n");
+    shell_puts("  Navigation\n");
+    shell_puts("    pwd               Print working directory\n");
+    shell_puts("    ls [-l] [path]    List directory contents\n");
+    shell_puts("    cd [path]         Change directory\n");
+    shell_puts("\n");
+    shell_puts("  File Operations\n");
+    shell_puts("    mkdir <name>      Create a directory\n");
+    shell_puts("    touch <name>      Create an empty file\n");
+    shell_puts("    rm <name>         Remove a file or empty directory\n");
+    shell_puts("    cat <file>        Print file contents\n");
+    shell_puts("    echo              Print arguments (-n: no newline)\n");
+    shell_puts("\n");
+    shell_puts("  System\n");
+    shell_puts("    sysinfo           Show PC and OS configuration\n");
+    shell_puts("    free              Show RAM information\n");
+    shell_puts("    uptime            Show system uptime\n");
+    shell_puts("    uname [-a]        Print system information\n");
+    shell_puts("    version           Print version information\n");
+    shell_puts("    hostname [name]   Print or set hostname\n");
+    shell_puts("    whoami            Print current user\n");
+    shell_puts("    neofetch          System info with ASCII art\n");
+    shell_puts("\n");
+    shell_puts("  Process & Services\n");
+    shell_puts("    ps                List running processes\n");
+    shell_puts("    services          Show registered micro-kernel services\n");
+    shell_puts("\n");
+    shell_puts("  Shell\n");
+    shell_puts("    clear             Clear the screen\n");
+    shell_puts("    help              Display this help message\n");
+    shell_puts("    history           Print command history\n");
+    shell_puts("    env               Print environment variables\n");
+    shell_puts("    export NAME=val   Set an environment variable\n");
+    shell_puts("    unset NAME        Remove an environment variable\n");
+    shell_puts("    edits             Show edited-file memory\n");
+    shell_puts("    play              Play Snake game\n");
+    shell_puts("    about             Display OS information\n");
+    shell_puts("\n");
+    shell_puts("  Power\n");
+    shell_puts("    reboot / restart  Restart the system\n");
+    shell_puts("    shutdown          Power off the system\n");
+    shell_puts("\n");
+    shell_puts("  Operators: ; && || | > >>\n");
+    shell_puts("  Scripting: if/then/else/fi  while/do/done  for/in/do/done\n");
     return 0;
 }
 
@@ -364,7 +385,7 @@ static int builtin_echo(char **argv, int argc)
 static int builtin_about(char **argv, int argc)
 {
     (void)argc; (void)argv;
-    shell_puts("Hydra OS - Micro-kernel operating system\n");
+    shell_puts("RedLion OS - Micro-kernel operating system\n");
     shell_puts("Architecture: Ring 0 kernel + Ring 3 user-space servers\n");
     shell_puts("IPC: Message-passing with service registry\n");
     shell_puts("Built with clang/lld on MSYS2\n");
@@ -567,7 +588,7 @@ static int builtin_whoami(char **argv, int argc)
 static int builtin_version(char **argv, int argc)
 {
     (void)argc; (void)argv;
-    shell_puts("Hydra OS 2.0.0\n");
+    shell_puts("RedLion OS 2.0.0\n");
     shell_puts("Kernel: i386 microkernel\n");
     shell_puts("Servers: display, input, storage, system (ring 3)\n");
     shell_puts("IPC: message-passing with service registry\n");
@@ -660,9 +681,9 @@ static int builtin_sysinfo(char **argv, int argc)
     (void)argc; (void)argv;
 
     fb_set_color(FB_LIGHT_RED, FB_BLACK);
-    shell_puts("Hydra PC Configuration\n");
+    shell_puts("RedLion PC Configuration\n");
     fb_set_color(FB_WHITE, FB_BLACK);
-    shell_puts("OS: Hydra OS 2.0.0\n");
+    shell_puts("OS: RedLion OS 2.0.0\n");
     shell_puts("Kernel: i386 microkernel\n");
     shell_puts("Boot: GRUB Multiboot\n");
     shell_puts("CPU arch: ");
@@ -703,7 +724,7 @@ static int builtin_edits(char **argv, int argc)
 static void taskmgr_print_header(void)
 {
     fb_set_color(FB_LIGHT_RED, FB_BLACK);
-    shell_puts("Hydra OS Task Manager\n");
+    shell_puts("RedLion Task Manager\n");
     fb_set_color(FB_WHITE, FB_BLACK);
     shell_puts("PID  NAME          STATE\n");
     shell_puts("---  ------------  -------\n");
@@ -744,7 +765,7 @@ static int builtin_services(char **argv, int argc)
     (void)argc; (void)argv;
 
     fb_set_color(FB_LIGHT_RED, FB_BLACK);
-    shell_puts("Hydra OS Micro-Kernel Services\n");
+    shell_puts("RedLion Micro-Kernel Services\n");
     fb_set_color(FB_WHITE, FB_BLACK);
 
     len = ipc_service_status(buf, 1024);
@@ -758,43 +779,183 @@ static int builtin_services(char **argv, int argc)
     return 0;
 }
 
+static int builtin_reboot(char **argv, int argc)
+{
+    (void)argc; (void)argv;
+    fb_clear();
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("Rebooting...\n");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    { volatile int d; for (d = 0; d < 5000000; d++); }
+    /* PS/2 controller reset */
+    while (1) { outb(0x64, 0xFE); }
+    return 0;
+}
+
+static int builtin_shutdown(char **argv, int argc)
+{
+    (void)argc; (void)argv;
+    fb_clear();
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("System halted. It is now safe to turn off your computer.\n");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    { volatile int d; for (d = 0; d < 5000000; d++); }
+    /* QEMU ACPI shutdown */
+    outw(0x604, 0x2000);
+    outw(0xB004, 0x2000);
+    while (1) { __asm__ volatile ("hlt"); }
+    return 0;
+}
+
+static int builtin_uptime(char **argv, int argc)
+{
+    uint32 secs;
+    uint32 mins;
+    uint32 hrs;
+    char buf[16];
+
+    (void)argc; (void)argv;
+
+    secs = pit_get_seconds();
+    hrs = secs / 3600;
+    mins = (secs % 3600) / 60;
+    secs = secs % 60;
+
+    utoa(buf, hrs);
+    shell_puts(buf);
+    shell_puts(":");
+    if (mins < 10) shell_putc('0');
+    utoa(buf, mins);
+    shell_puts(buf);
+    shell_puts(":");
+    if (secs < 10) shell_putc('0');
+    utoa(buf, secs);
+    shell_puts(buf);
+    shell_putc('\n');
+    return 0;
+}
+
+static char line_buf[256];
+static char hist_buf[LINEEDIT_HISTORY_SIZE][256];
+static int  prompt_len = 0;
+
+static int builtin_history(char **argv, int argc)
+{
+    int i;
+    (void)argc; (void)argv;
+    for (i = 0; i < LINEEDIT_HISTORY_SIZE; i++) {
+        if (hist_buf[i][0] == '\0') break;
+        shell_print_int(i + 1);
+        shell_puts("  ");
+        shell_puts(hist_buf[i]);
+        shell_putc('\n');
+    }
+    return 0;
+}
+
+static int builtin_neofetch(char **argv, int argc)
+{
+    uint32 secs, hrs, mins;
+    char ubuf[16];
+
+    (void)argc; (void)argv;
+
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("        .   .         ");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    shell_puts("user@redlion\n");
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("         \\  /          ");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    shell_puts("OS: RedLion OS 2.0.0\n");
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("     ,   \\/  ,.       ");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    shell_puts("Kernel: i386 microkernel\n");
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("    ( \\.\\##/.  )      ");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    shell_puts("Shell: redlion-sh\n");
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("     \\' --'  /\\      ");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    shell_puts("CPU: ");
+    shell_puts(system_cpu_vendor());
+    shell_putc('\n');
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("      '-.__.-'        ");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    shell_puts("RAM: ");
+    print_kb_and_mb(system_ram_total_kb());
+    shell_putc('\n');
+    fb_set_color(FB_LIGHT_RED, FB_BLACK);
+    shell_puts("                       ");
+    fb_set_color(FB_WHITE, FB_BLACK);
+    shell_puts("Uptime: ");
+    secs = pit_get_seconds();
+    hrs = secs / 3600;
+    mins = (secs % 3600) / 60;
+    secs = secs % 60;
+    utoa(ubuf, hrs);
+    shell_puts(ubuf);
+    shell_puts(":");
+    if (mins < 10) shell_putc('0');
+    utoa(ubuf, mins);
+    shell_puts(ubuf);
+    shell_puts(":");
+    if (secs < 10) shell_putc('0');
+    utoa(ubuf, secs);
+    shell_puts(ubuf);
+    shell_putc('\n');
+    return 0;
+}
+
 typedef struct {
     const char *name;
     int (*func)(char **argv, int argc);
 } builtin_cmd;
 
 static builtin_cmd builtins[] = {
-    {"help",     builtin_help},
-    {"clear",    builtin_clear},
-    {"echo",     builtin_echo},
-    {"about",    builtin_about},
-    {"pwd",      builtin_pwd},
-    {"cd",       builtin_cd},
-    {"ls",       builtin_ls},
-    {"mkdir",    builtin_mkdir},
-    {"touch",    builtin_touch},
-    {"rm",       builtin_rm},
-    {"cat",      builtin_cat},
-    {"uname",    builtin_uname},
-    {"hostname", builtin_hostname},
-    {"whoami",   builtin_whoami},
-    {"version",  builtin_version},
-    {"env",      builtin_env},
-    {"export",   builtin_export},
-    {"set",      builtin_env},
-    {"unset",    builtin_unset},
-    {"play",     builtin_play},
-    {"sysinfo",  builtin_sysinfo},
-    {"pcinfo",   builtin_sysinfo},
-    {"free",     builtin_free},
-    {"meminfo",  builtin_free},
-    {"edits",    builtin_edits},
-    {"recent",   builtin_edits},
-    {"taskmgr",  builtin_taskmgr},
-    {"tasks",    builtin_taskmgr},
-    {"ps",       builtin_taskmgr},
-    {"services", builtin_services},
-    {"svc",      builtin_services},
+    {"help",      builtin_help},
+    {"clear",     builtin_clear},
+    {"echo",      builtin_echo},
+    {"about",     builtin_about},
+    {"pwd",       builtin_pwd},
+    {"cd",        builtin_cd},
+    {"ls",        builtin_ls},
+    {"mkdir",     builtin_mkdir},
+    {"touch",     builtin_touch},
+    {"rm",        builtin_rm},
+    {"cat",       builtin_cat},
+    {"uname",     builtin_uname},
+    {"hostname",  builtin_hostname},
+    {"whoami",    builtin_whoami},
+    {"version",   builtin_version},
+    {"env",       builtin_env},
+    {"export",    builtin_export},
+    {"set",       builtin_env},
+    {"unset",     builtin_unset},
+    {"play",      builtin_play},
+    {"sysinfo",   builtin_sysinfo},
+    {"pcinfo",    builtin_sysinfo},
+    {"free",      builtin_free},
+    {"meminfo",   builtin_free},
+    {"edits",     builtin_edits},
+    {"recent",    builtin_edits},
+    {"taskmgr",   builtin_taskmgr},
+    {"tasks",     builtin_taskmgr},
+    {"ps",        builtin_taskmgr},
+    {"services",  builtin_services},
+    {"svc",       builtin_services},
+    {"reboot",    builtin_reboot},
+    {"restart",   builtin_reboot},
+    {"shutdown",  builtin_shutdown},
+    {"poweroff",  builtin_shutdown},
+    {"halt",      builtin_shutdown},
+    {"uptime",    builtin_uptime},
+    {"history",   builtin_history},
+    {"neofetch",  builtin_neofetch},
+    {"fetch",     builtin_neofetch},
     {0, 0}
 };
 
@@ -1243,10 +1404,6 @@ static int execute_script_block(void)
  *  Main shell logic
  * ========================================================= */
 
-static char line_buf[256];
-static char hist_buf[LINEEDIT_HISTORY_SIZE][256];
-static int  prompt_len = 0;
-
 /** draw_prompt:
  *  Prints the bash-style prompt: user@host:path$
  */
@@ -1285,17 +1442,14 @@ void shell_init(void)
 
     fb_clear();
     fb_set_color(FB_LIGHT_RED, FB_BLACK);
-    shell_puts("hydra 2.0.0 #1 i386 HydraOS GNU/Hydra\n");
+    shell_puts("redlion 2.0.0 #1 i386 RedLionOS GNU/RedLion\n");
     shell_puts("\n");
     fb_set_color(FB_RED, FB_BLACK);
-    shell_puts("  _                     _             \n");
-    shell_puts(" | |                   (_)            \n");
-    shell_puts(" | |__  _   _ _ __ ___  _ _ __   __ _ \n");
-    shell_puts(" | '_ \\| | | | '_ ` _ \\| | '_ \\ / _` |\n");
-    shell_puts(" | | | | |_| | | | | | | | | | | (_| |\n");
-    shell_puts(" |_| |_|\\__,_|_| |_| |_|_|_| |_|\\__, |\n");
-    shell_puts("                                  __/ |\n");
-    shell_puts("                                 |___/ \n");
+    shell_puts(" ____          _ _     _             \n");
+    shell_puts("|  _ \\ ___  __| | |   (_) ___  _ __ \n");
+    shell_puts("| |_) / _ \\/ _` | |   | |/ _ \\| '_ \\\n");
+    shell_puts("|  _ <  __/ (_| | |___| | (_) | | | |\n");
+    shell_puts("|_| \\_\\___|\\__,_|_____|_|\\___/|_| |_|\n");
     fb_set_color(FB_WHITE, FB_BLACK);
     shell_puts("\nType 'help' for available commands.\n\n");
 

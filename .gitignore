@@ -1,6 +1,6 @@
 *.o
 kernel.elf
+redlion.iso
 hydra.iso
 com1.out
-os_code.zip
-redlion.iso
+serial_out.txt

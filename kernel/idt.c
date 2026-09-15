@@ -3,6 +3,7 @@
 #include "serial.h"
 #include "pit.h"
 #include "syscall.h"
+#include "mouse.h"
 
 /* Forward declarations */
 void keyboard_handle_interrupt(unsigned char scan_code);
@@ -173,49 +174,29 @@ void idt_install(void)
  */
 void interrupt_handler_main(unsigned int *regs)
 {
-    serial_write("INT!\n", 5);
-    
-    // Stack layout when we get here:
-    // regs points to the top of the stack after we pushed esp
-    // Working backwards from there:
-    // regs[0] points to: [gs][fs][es][ds][edi][esi][ebp][esp][ebx][edx][ecx][eax][int_no][err_code]
-    
-    // Since regs IS the stack pointer we saved, we can access directly:
-    // After pusha (8 registers), then ds, es, fs, gs (4 more) = 12 total
-    // Then int_no and error_code are pushed BEFORE all that
-    
-    // Let's access from the saved stack pointer
     unsigned int *stack_ptr = regs;
-    
-    // Skip: gs(0), fs(1), es(2), ds(3), and 8 pusha registers = 12 total
-    unsigned int interrupt = stack_ptr[12];  // interrupt number
-    
-    serial_write("INT NUM: ", 9);
-    char buf[10];
-    buf[0] = '0' + (interrupt / 10);
-    buf[1] = '0' + (interrupt % 10);
-    serial_write(buf, 2);
-    serial_write("\n", 1);
-    
-    /* Handle keyboard interrupt */
-    if (interrupt == 33) {  /* 33 = 0x21 = IRQ1 */
-        serial_write("KBD!\n", 5);
+    unsigned int interrupt = stack_ptr[12];
+
+    if (interrupt == 33) {  /* 33 = 0x21 = IRQ1 keyboard */
         unsigned char scan_code = read_scan_code();
         keyboard_handle_interrupt(scan_code);
         pic_acknowledge(interrupt);
     } else if (interrupt == 32) {  /* 32 = 0x20 = IRQ0 timer */
         pit_tick();
         pic_acknowledge(interrupt);
+    } else if (interrupt == 44) {  /* 44 = 0x2C = IRQ12 mouse */
+        mouse_handle_interrupt();
+        pic_acknowledge(interrupt);
     } else if (interrupt == 128) {  /* 0x80 = syscall */
         /* Stack layout: gs fs es ds edi esi ebp esp ebx edx ecx eax int_no err_code
-         * eax=syscall num, ebx=a1, ecx=a2, edx=a3, edi=a4 */
+         * eax=syscall num, ebx=a1, ecx=a2, edx=a3, esi=a4 */
         unsigned int *usr = stack_ptr;
         uint32 ret = syscall_handler(
             usr[11],  /* eax = syscall number */
-            usr[9],   /* ebx = arg1 */
-            usr[8],   /* ecx = arg2 */
-            usr[7],   /* edx = arg3 */
-            usr[4]    /* edi = arg4 */
+            usr[8],   /* ebx = arg1 */
+            usr[10],  /* ecx = arg2 */
+            usr[9],   /* edx = arg3 */
+            usr[5]    /* esi = arg4 */
         );
         usr[11] = ret;  /* Store return value in eax */
         pic_acknowledge(interrupt);

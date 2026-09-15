@@ -18,6 +18,14 @@
 #define SYS_FB_WRITE    11
 #define SYS_KBD_GET     12
 #define SYS_SVC_STATUS  13
+#define SYS_REBOOT      14
+#define SYS_SHUTDOWN    15
+#define SYS_UPTIME      16
+#define SYS_FB_FLUSH    17
+#define SYS_FB_GET_INFO 18
+#define SYS_MOUSE_GET   19
+#define SYS_KBD_EVENT   20
+#define SYS_FB_MAP      21
 
 /* IPC message structure */
 #define IPC_MSG_MAX 128

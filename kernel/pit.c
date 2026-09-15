@@ -26,3 +26,8 @@ void pit_tick(void)
 {
     pit_ticks++;
 }
+
+uint32 pit_get_seconds(void)
+{
+    return pit_ticks / PIT_TICK_RATE;
+}
