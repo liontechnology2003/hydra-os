@@ -117,23 +117,33 @@ page_directory_t *paging_get_directory(void)
 
 int paging_map_page(uint32 virt, uint32 phys, uint32 flags)
 {
+    return paging_map_page_in_dir(current_directory, virt, phys, flags);
+}
+
+int paging_map_page_in_dir(page_directory_t *dir, uint32 virt, uint32 phys, uint32 flags)
+{
     uint32 di = PAGE_DIR_INDEX(virt);
     uint32 ti = PAGE_TABLE_INDEX(virt);
 
-    if (!kernel_directory) {
+    if (!dir) {
         return -1;
     }
 
-    if (!kernel_tables[di]) {
-        kernel_tables[di] = create_table();
-        if (!kernel_tables[di]) {
+    page_table_t *table;
+    if (!(dir->entries[di] & PAGE_PRESENT)) {
+        /* Allocate new page table */
+        uint32 table_phys = pmm_alloc_frame();
+        if (!table_phys) {
             return -1;
         }
-        map_table_page(kernel_directory, di, kernel_tables[di],
-                       (uint32)kernel_tables[di]);
+        table = (page_table_t *)table_phys;
+        memset(table, 0, sizeof(page_table_t));
+        dir->entries[di] = table_phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+    } else {
+        table = (page_table_t *)(dir->entries[di] & ~0xFFF);
     }
 
-    kernel_tables[di]->entries[ti] = (phys & ~0xFFF) | (flags | PAGE_PRESENT);
+    table->entries[ti] = (phys & ~0xFFF) | (flags | PAGE_PRESENT);
 
     __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
 

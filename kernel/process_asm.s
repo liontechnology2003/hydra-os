@@ -75,12 +75,15 @@ process_context_switch:
     je .initial_launch
 
     ; --- Save current process registers from the kernel interrupt frame ---
-    ; The interrupt frame is at the bottom of the current kernel stack.
-    ; current_proc->kernel_stack_base points to the bottom of the kernel stack.
+    ; The interrupt frame is at the TOP of the current kernel stack (near kernel_esp).
+    ; current_proc->kernel_esp points to the top of the kernel stack.
+    ; The interrupt handler pushes: pusha (32) + ds/es/fs/gs (16) + esp (4) = 52 bytes
+    ; plus CPU-pushed frame: ss/esp/eflags/cs/eip/err/int = 28 bytes (with error code)
+    ; Total offset from kernel_esp ≈ 80 bytes.
 
     mov ebx, [current_proc]
-    mov ecx, [ebx + PROC_KERNEL_STACK]   ; ecx = kernel_esp (top)
-    sub ecx, 4096                         ; ecx = bottom of kernel stack (interrupt frame start)
+    mov ecx, [ebx + PROC_KERNEL_ESP]   ; ecx = kernel_esp (top of stack)
+    sub ecx, 24                         ; ecx = interrupt frame start (kernel_esp - 24)
 
     ; Save from interrupt frame [ecx] to regs_t [ebx]
     mov edi, [ecx + KSTK_EAX]
@@ -111,18 +114,13 @@ process_context_switch:
     mov [ebx + PROC_REGS + REGS_EFLAGS], edi
 
     ; Segment registers (16-bit, stored as 32-bit in regs_t)
+    ; Only CS and SS are saved by CPU on ring transition.
+    ; DS/ES/FS/GS in interrupt frame are kernel segments (0x10), not user segments.
+    ; Preserve existing user segments from regs_t (set at process creation).
     movzx edi, word [ecx + KSTK_CS]
     mov [ebx + PROC_REGS + REGS_CS], edi
     movzx edi, word [ecx + KSTK_SS]
     mov [ebx + PROC_REGS + REGS_SS], edi
-    movzx edi, word [ecx + KSTK_DS]
-    mov [ebx + PROC_REGS + REGS_DS], edi
-    movzx edi, word [ecx + KSTK_ES]
-    mov [ebx + PROC_REGS + REGS_ES], edi
-    movzx edi, word [ecx + KSTK_FS]
-    mov [ebx + PROC_REGS + REGS_FS], edi
-    movzx edi, word [ecx + KSTK_GS]
-    mov [ebx + PROC_REGS + REGS_GS], edi
 
     ; --- Load next process's registers ---
     mov eax, [esp+4]            ; reload eax = &next->regs

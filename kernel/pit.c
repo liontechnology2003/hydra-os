@@ -1,5 +1,6 @@
 #include "pit.h"
 #include "io.h"
+#include "process.h"
 
 static uint32 pit_ticks = 0;
 
@@ -25,6 +26,18 @@ uint32 pit_get_ticks(void)
 void pit_tick(void)
 {
     pit_ticks++;
+
+    /* Preemptive scheduling: decrement current process quantum */
+    extern process_t *current_proc;
+    if (current_proc && current_proc->state == PROC_RUNNING) {
+        if (current_proc->ticks_remaining > 0) {
+            current_proc->ticks_remaining--;
+        }
+        if (current_proc->ticks_remaining == 0) {
+            extern void process_schedule(void);
+            process_schedule();
+        }
+    }
 }
 
 uint32 pit_get_seconds(void)

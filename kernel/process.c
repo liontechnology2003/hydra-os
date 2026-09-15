@@ -120,6 +120,7 @@ int process_create(const char *name, void (*entry)(void))
 
     proc->kernel_stack_base = kernel_stack;
     proc->kernel_esp = kernel_stack + PROCESS_STACK_SIZE;
+    proc->ticks_remaining = PROCESS_TIME_QUANTUM;
 
     /* Set up initial register state.
      * regs_t layout: eax=0 ebx=4 ecx=8 edx=12 esi=16 edi=20
@@ -210,6 +211,7 @@ void process_schedule(void)
 
     current_proc = next;
     current_proc->state = PROC_RUNNING;
+    current_proc->ticks_remaining = PROCESS_TIME_QUANTUM;
 
     /* Switch page directory */
     paging_switch_directory(current_proc->page_dir);
@@ -279,6 +281,7 @@ int process_fork(void)
         memset((void *)kernel_stack, 0, PROCESS_STACK_SIZE);
         child->kernel_stack_base = kernel_stack;
         child->kernel_esp = kernel_stack + PROCESS_STACK_SIZE;
+        child->ticks_remaining = PROCESS_TIME_QUANTUM;
     }
 
     enqueue_ready(child);

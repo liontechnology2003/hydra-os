@@ -84,17 +84,53 @@ typedef struct {
 #define ET_EXEC    2
 #define ET_DYN     3
 
-/* Load an ELF binary from a memory buffer.
- * Creates a new process with the ELF's entry point.
- * Returns the new process's PID, or -1 on error. */
-int elf_load(const char *name, const uint8 *data, uint32 size);
+/* Dynamic section tag values */
+#define DT_NULL        0
+#define DT_NEEDED       1
+#define DT_PLTRELSZ    2
+#define DT_PLTGOT       3
+#define DT_HASH        4
+#define DT_STRTAB       5
+#define DT_SYMTAB       6
+#define DT_RELA         7
+#define DT_RELASZ       8
+#define DT_RELAENT      9
+#define DT_STRSZ        10
+#define DT_SYMENT       11
+#define DT_INIT         12
+#define DT_FINI         13
+#define DT_SONAME       14
+#define DT_REL          17
+#define DT_RELSZ        18
+#define DT_RELENT       19
 
-/* Load an ELF binary from the ramdisk.
- * ramdisk_addr and ramdisk_size are set during boot. */
+/* Relocations */
+typedef struct {
+    uint32 r_offset;
+    uint32 r_info;
+    uint32 r_addend;
+} __attribute__((packed)) elf32_rela;
+
+/* Symbol table entries */
+typedef struct {
+    uint32 st_name;
+    uint32 st_value;
+    uint32 st_size;
+    uint8  st_info;
+    uint8  st_other;
+    uint16 st_shndx;
+} __attribute__((packed)) elf32_sym;
+
+/* ELF loading functions */
+int elf_load(const char *name, const uint8 *data, uint32 size);
 void elf_set_ramdisk(uint32 addr, uint32 size);
 int  elf_load_from_ramdisk(const char *name, const char *path);
-
-/* Add a file to the in-memory ramdisk */
 int ramdisk_add_file(const char *name, const uint8 *data, uint32 size);
 
+/* Dynamic linker functions */
+int dlopen(const char *name, int flags);
+void* dlsym(void* handle, const char* symbol);
+void dlclose(void* handle);
+
 #endif /* KERNEL_ELF_H */
+

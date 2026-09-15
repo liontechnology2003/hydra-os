@@ -29,6 +29,7 @@ void     paging_switch_directory(page_directory_t *dir);
 page_directory_t *paging_get_directory(void);
 
 int      paging_map_page(uint32 virt, uint32 phys, uint32 flags);
+int      paging_map_page_in_dir(page_directory_t *dir, uint32 virt, uint32 phys, uint32 flags);
 int      paging_unmap_page(uint32 virt);
 uint32   paging_get_physical(uint32 virt);
 

@@ -8,9 +8,9 @@ section .text
 
 global _start
 _start:
-    ; Write "Hello from ELF!\n" using syscall 1 (SYS_WRITE), fd=1 (stdout)
+    ; Write "Hello from ELF!\n" using syscall 1 (SYS_WRITE), fd=0 (serial)
     mov eax, 1              ; SYS_WRITE
-    mov ebx, 1              ; fd = stdout
+    mov ebx, 0              ; fd = stdin (serial in our syscall handler)
     mov ecx, msg            ; buffer
     mov edx, msg_len        ; length
     int 0x80

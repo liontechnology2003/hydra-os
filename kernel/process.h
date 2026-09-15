@@ -7,6 +7,7 @@
 #define PROCESS_MAX      32
 #define PROCESS_NAME_MAX 32
 #define PROCESS_STACK_SIZE 4096
+#define PROCESS_TIME_QUANTUM 10  /* 10 ticks = 100ms at 100Hz */
 
 #define PROC_UNUSED   0
 #define PROC_READY    1
@@ -36,6 +37,7 @@ typedef struct process {
     uint32        kernel_stack_base; /* bottom of kernel stack (for freeing) */
     uint32        stack_base;       /* bottom of user stack (for freeing) */
     struct process *next;
+    int           ticks_remaining;  /* time quantum remaining */
 } process_t;
 
 void     process_init(void);
